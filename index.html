@@ -124,6 +124,19 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 .dwell.current{color:var(--green);border-color:rgba(0,230,118,.3);}
 .mini-skip{font-size:9px;font-weight:700;text-transform:uppercase;padding:1px 5px;border-radius:2px;background:rgba(80,80,80,.2);color:#555;}
 .mini-add{font-size:9px;font-weight:700;text-transform:uppercase;padding:1px 5px;border-radius:2px;background:rgba(33,150,243,.15);color:var(--blue);}
+
+/* ── ALERTES DANS LE DÉTAIL ── */
+.alert-section{padding:10px 18px 4px;}
+.alert-section-title{font-family:'Bebas Neue',sans-serif;font-size:12px;letter-spacing:1.5px;color:var(--muted);margin-bottom:8px;}
+.alert-card{padding:10px 12px;border-radius:6px;margin-bottom:6px;border-left:3px solid;}
+.alert-card.blocking{background:rgba(227,6,19,.08);border-color:var(--red);}
+.alert-card.significant{background:rgba(255,152,0,.08);border-color:var(--orange);}
+.alert-card.info{background:rgba(33,150,243,.08);border-color:var(--blue);}
+.alert-cause{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;}
+.alert-card.blocking   .alert-cause{color:#FF8A80;}
+.alert-card.significant .alert-cause{color:#FFB74D;}
+.alert-card.info       .alert-cause{color:#90CAF9;}
+.alert-text{font-size:12px;color:var(--muted);line-height:1.5;}
 .current-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--green);letter-spacing:.3px;text-transform:uppercase;}
 .current-badge::before{content:'';display:inline-block;width:5px;height:5px;background:var(--green);border-radius:50%;animation:pulse 1.5s infinite;}
 
@@ -218,7 +231,7 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 const PROXY = 'https://sncf-poxy-live.onrender.com';
 const REFRESH_MS = 60000;
 
-let map, allTrains = [], markers = {}, routeLayers = [], selId = null, activeFilter = 'all';
+let map, allTrains = [], allAlerts = [], markers = {}, routeLayers = [], selId = null, activeFilter = 'all';
 let searchTimer = null;
 
 // ══════════════════════════════════════════════════════
@@ -228,15 +241,15 @@ function initMap() {
   map = L.map('map', { center:[46.8, 2.3], zoom:6, zoomControl:false });
   L.control.zoom({ position:'bottomright' }).addTo(map);
 
-  // Tuiles dark avec noms en français via tile.openstreetmap.fr
+  // Fond sombre CartoDB sans labels
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
-    maxZoom:19, subdomains:'abcd'
+    maxZoom:19, subdomains:'abcd',
+    attribution:'&copy; <a href="https://carto.com">CARTO</a> &copy; <a href="https://www.openstreetmap.org">OSM</a>'
   }).addTo(map);
 
-  // Labels OSM France par-dessus (noms français)
-  L.tileLayer('https://tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png', {
-    maxZoom:19, opacity:0.55,
-    attribution:'&copy; <a href="https://www.openstreetmap.org">OpenStreetMap</a> contributeurs'
+  // Labels CartoDB dark_only_labels — noms issus d'OSM (français pour la France)
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
+    maxZoom:19, subdomains:'abcd'
   }).addTo(map);
 
   map.on('click', closeDetail);
@@ -309,28 +322,39 @@ function calcBearing(lat1, lon1, lat2, lon2) {
 }
 
 // ══════════════════════════════════════════════════════
-// ICÔNE FLÈCHE ORIENTÉE
-// SVG ressemblant à une capsule/flèche arrondie
+// ICÔNE TRAIN — forme TGV vue du dessus
+// Rectangle à bords arrondis + pointe triangulaire avant
+// Orienté selon le bearing (direction de déplacement)
 // ══════════════════════════════════════════════════════
 function trainIcon(train, bearing, color, glow) {
   const lbl = { TGV:'TGV', TER:'TER', IC:'IC' }[train.type] || train.type;
-  // Capsule allongée avec pointe avant, rotée selon bearing
+
+  // La forme : pointe en haut (nord = 0°), rotée selon bearing
+  // Largeur 14px, longueur 28px + pointe 6px = 34px total
+  // Centré sur (22,22) dans un viewBox 44x44
+  const shape = `
+    M 22,7
+    L 29,13
+    Q 30,13 30,15
+    L 30,33
+    Q 30,37 26,37
+    L 18,37
+    Q 14,37 14,33
+    L 14,15
+    Q 14,13 15,13
+    Z
+  `;
+
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">
     <g transform="rotate(${bearing}, 22, 22)">
-      <!-- Halo lumineux -->
-      <ellipse cx="22" cy="22" rx="18" ry="12" fill="${glow}"/>
-      <!-- Corps de la capsule -->
-      <path d="M22,8 Q32,14 32,22 Q32,30 22,36 Q12,30 12,22 Q12,14 22,8 Z"
-            fill="${color}" opacity="0.93"/>
-      <!-- Pointe avant (haut) -->
-      <polygon points="22,6 18,14 26,14" fill="${color}" opacity="0.93"/>
-      <!-- Reflet -->
-      <ellipse cx="22" cy="17" rx="4" ry="2.5" fill="rgba(255,255,255,0.15)"/>
+      <ellipse cx="22" cy="22" rx="17" ry="17" fill="${glow}"/>
+      <path d="${shape}" fill="${color}" opacity="0.95"/>
+      <path d="M18,16 L26,16 L26,28 L18,28 Z" fill="rgba(255,255,255,0.08)" rx="2"/>
+      <line x1="22" y1="14" x2="22" y2="36" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
     </g>
-    <!-- Label (non-rotatif) -->
-    <text x="22" y="26" text-anchor="middle"
-          font-family="DM Mono,monospace" font-size="8" font-weight="700"
-          fill="white" opacity="0.9">${lbl}</text>
+    <text x="22" y="25" text-anchor="middle"
+          font-family="DM Mono,monospace" font-size="7" font-weight="700"
+          fill="white" opacity="0.95" letter-spacing="0.3">${lbl}</text>
   </svg>`;
   return L.divIcon({ html: svg, className: '', iconSize:[44,44], iconAnchor:[22,22] });
 }
@@ -382,6 +406,13 @@ async function loadTrains() {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     allTrains = data.trains || [];
+
+    // Chargement alertes en parallèle (silencieux si échec)
+    try {
+      const ra = await fetch(`${PROXY}/alerts`, { signal: AbortSignal.timeout(10000) });
+      const da = await ra.json();
+      allAlerts = da.alerts || [];
+    } catch(e) { allAlerts = []; }
     render();
     const nb  = allTrains.filter(t => t.rtStatus !== 'NO_DISRUPTION').length;
     const age = data.cacheAgeSec != null ? ` · données ${data.cacheAgeSec}s` : '';
@@ -528,10 +559,45 @@ function showDetail(t, pos) {
   const stops  = t.stops || [];
   const now    = Date.now();
 
+  // ── Alertes liées à ce train ──
+  const trainAlerts = allAlerts.filter(a =>
+    a.affected?.some(e =>
+      (e.tripId && t.tripId && e.tripId === t.tripId) ||
+      (e.routeId && t.routeId && e.routeId === t.routeId)
+    )
+  );
+
+  const alertsHTML = trainAlerts.length
+    ? `<div class="alert-section">
+        <div class="alert-section-title">⚠ Perturbations</div>
+        ${trainAlerts.map(a => {
+          const causeLabels = {
+            STRIKE:'Grève', TECHNICAL_PROBLEM:'Problème technique', ACCIDENT:'Accident',
+            WEATHER:'Conditions météo', MAINTENANCE:'Travaux', CONSTRUCTION:'Travaux',
+            POLICE_ACTIVITY:'Intervention forces de l\'ordre', MEDICAL_EMERGENCY:'Urgence médicale',
+            DEMONSTRATION:'Manifestation', OTHER_CAUSE:'Autre cause', UNKNOWN_CAUSE:'Cause inconnue'
+          };
+          const effectLabels = {
+            NO_SERVICE:'Service supprimé', SIGNIFICANT_DELAYS:'Retards importants',
+            REDUCED_SERVICE:'Service réduit', MODIFIED_SERVICE:'Service modifié',
+            DETOUR:'Déviation', ADDITIONAL_SERVICE:'Service supplémentaire'
+          };
+          const cause  = causeLabels[a.cause]  || a.cause  || '';
+          const effect = effectLabels[a.effect] || a.effect || '';
+          const label  = [cause, effect].filter(Boolean).join(' · ');
+          const msg    = a.headerText || a.description || '';
+          return `<div class="alert-card ${a.severity || 'info'}">
+            <div class="alert-cause">${label}</div>
+            ${msg ? `<div class="alert-text">${msg}</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>`
+    : '';
+
   // Détermine l'index de l'arrêt courant (entre lequel le train circule)
   const currentSegIdx = pos?.segIdx ?? findCurrentSegment(stops, now);
 
-  document.getElementById('detBody').innerHTML = stops.length
+  document.getElementById('detBody').innerHTML = alertsHTML + (stops.length
     ? `<div class="stops-title">Arrêts desservis (${stops.length})</div>`
       + stops.map((s, i) => {
           const skip  = s.scheduleRelationship === 'SKIPPED';
@@ -587,7 +653,7 @@ function showDetail(t, pos) {
             </div>
           </div>`;
         }).join('')
-    : `<div class="empty">Pas de détail d'arrêt disponible.</div>`;
+    : `<div class="empty">Pas de détail d'arrêt disponible.</div>`);
 
   // Scroll auto vers l'arrêt courant
   document.getElementById('detailPanel').classList.add('open');
