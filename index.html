@@ -719,28 +719,31 @@ function showDetail(t, pos) {
     // Calcule la sévérité effective de chaque alerte (déduite si absente)
     const withSev = alertsToShow.map(a => {
       const txt = ((a.headerText || '') + ' ' + (a.description || '')).toLowerCase();
-      const effectiveSev = a.severity || (
-        a.effect === 'NO_SERVICE'
-          ? 'blocking'
-        : (
-            a.effect === 'SIGNIFICANT_DELAYS' ||
-            a.effect === 'REDUCED_SERVICE'    ||
-            a.effect === 'MODIFIED_SERVICE'   ||
-            a.cause  === 'STRIKE'             ||
-            a.cause  === 'ACCIDENT'           ||
-            a.cause  === 'TECHNICAL_PROBLEM'  ||
-            a.cause  === 'DEMONSTRATION'      ||
-            a.cause  === 'WEATHER'            ||
-            a.cause  === 'POLICE_ACTIVITY'    ||
-            a.cause  === 'MEDICAL_EMERGENCY'  ||
-            txt.includes('retard')            ||
-            txt.includes('supprim')           ||
-            txt.includes('perturbat')         ||
-            txt.includes('incident')          ||
-            txt.includes('panne')             ||
-            txt.includes('grève')
-          ) ? 'significant' : 'info'
-      );
+      // On ne fait confiance à a.severity que s'il vaut 'blocking' ou 'significant'
+      // car la SNCF met souvent 'info' même sur des alertes de retard/perturbation
+      const isDisrupted =
+        a.effect === 'SIGNIFICANT_DELAYS' ||
+        a.effect === 'REDUCED_SERVICE'    ||
+        a.effect === 'MODIFIED_SERVICE'   ||
+        a.cause  === 'STRIKE'             ||
+        a.cause  === 'ACCIDENT'           ||
+        a.cause  === 'TECHNICAL_PROBLEM'  ||
+        a.cause  === 'DEMONSTRATION'      ||
+        a.cause  === 'WEATHER'            ||
+        a.cause  === 'POLICE_ACTIVITY'    ||
+        a.cause  === 'MEDICAL_EMERGENCY'  ||
+        txt.includes('retard')            ||
+        txt.includes('supprim')           ||
+        txt.includes('perturbat')         ||
+        txt.includes('incident')          ||
+        txt.includes('panne')             ||
+        txt.includes('grève');
+
+      const effectiveSev =
+        (a.severity === 'blocking' || a.effect === 'NO_SERVICE') ? 'blocking' :
+        (a.severity === 'significant' || isDisrupted)            ? 'significant' :
+        'info';
+
       return { ...a, effectiveSev };
     });
 
