@@ -152,7 +152,9 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 .alert-chevron{color:var(--muted);font-size:11px;transition:transform .2s;}
 .alert-chevron.open{transform:rotate(180deg);}
 .alert-body{overflow:hidden;max-height:0;transition:max-height .3s ease;}
-.alert-body.open{max-height:600px;}
+.alert-body.open{max-height:260px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.alert-body.open::-webkit-scrollbar{width:3px;}
+.alert-body.open::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 .alert-body-inner{padding-top:8px;display:flex;flex-direction:column;gap:6px;}
 .alert-preview{font-size:12px;color:var(--muted);padding:6px 12px 2px;line-height:1.4;font-style:italic;}
 /* Cards d'alerte avec fond coloré */
@@ -716,12 +718,28 @@ function showDetail(t, pos) {
   const alertsHTML = alertsToShow.length ? (() => {
     // Calcule la sévérité effective de chaque alerte (déduite si absente)
     const withSev = alertsToShow.map(a => {
+      const txt = ((a.headerText || '') + ' ' + (a.description || '')).toLowerCase();
       const effectiveSev = a.severity || (
-        a.effect === 'NO_SERVICE' ? 'blocking' :
-        (a.effect === 'SIGNIFICANT_DELAYS' || a.effect === 'REDUCED_SERVICE' ||
-         a.cause === 'STRIKE' || a.cause === 'ACCIDENT' ||
-         a.cause === 'TECHNICAL_PROBLEM' || a.cause === 'DEMONSTRATION' ||
-         (a.headerText || a.description || '').toLowerCase().includes('retard')) ? 'significant' : 'info'
+        a.effect === 'NO_SERVICE'
+          ? 'blocking'
+        : (
+            a.effect === 'SIGNIFICANT_DELAYS' ||
+            a.effect === 'REDUCED_SERVICE'    ||
+            a.effect === 'MODIFIED_SERVICE'   ||
+            a.cause  === 'STRIKE'             ||
+            a.cause  === 'ACCIDENT'           ||
+            a.cause  === 'TECHNICAL_PROBLEM'  ||
+            a.cause  === 'DEMONSTRATION'      ||
+            a.cause  === 'WEATHER'            ||
+            a.cause  === 'POLICE_ACTIVITY'    ||
+            a.cause  === 'MEDICAL_EMERGENCY'  ||
+            txt.includes('retard')            ||
+            txt.includes('supprim')           ||
+            txt.includes('perturbat')         ||
+            txt.includes('incident')          ||
+            txt.includes('panne')             ||
+            txt.includes('grève')
+          ) ? 'significant' : 'info'
       );
       return { ...a, effectiveSev };
     });
