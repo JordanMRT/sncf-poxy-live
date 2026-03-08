@@ -293,49 +293,64 @@ function initMap() {
 // ══════════════════════════════════════════════════════
 function interpolatePosition(train) {
   const rawStops = train.stops || [];
-  // On travaille sur les stops avec coords, mais on garde leur index d'origine
   const stopsWithCoords = rawStops
     .map((s, rawIdx) => ({ ...s, rawIdx }))
     .filter(s => s.lat && s.lon && s.scheduleRelationship !== 'SKIPPED');
 
-  if (stopsWithCoords.length === 0) return null;
-  if (stopsWithCoords.length === 1) return {
-    lat: stopsWithCoords[0].lat, lon: stopsWithCoords[0].lon,
-    bearing: 0, segIdx: stopsWithCoords[0].rawIdx
-  };
-
   const now = Date.now();
 
-  for (let i = 0; i < stopsWithCoords.length - 1; i++) {
+  // ── Cas 0 : pas de stops avec coords → fallback sur lat/lon du train
+  if (stopsWithCoords.length === 0) {
+    if (train.lat && train.lon) {
+      return { lat: train.lat, lon: train.lon, bearing: 0, segIdx: 0 };
+    }
+    return null;
+  }
+
+  // ── Cas 1 : un seul stop avec coords
+  if (stopsWithCoords.length === 1) {
+    return { lat: stopsWithCoords[0].lat, lon: stopsWithCoords[0].lon, bearing: 0, segIdx: stopsWithCoords[0].rawIdx };
+  }
+
+  for (let i = 0; i < stopsWithCoords.length; i++) {
     const curr = stopsWithCoords[i];
     const next = stopsWithCoords[i + 1];
 
-    const depTime = getStopTime(curr, 'departure') || getStopTime(curr, 'arrival');
-    const arrTime = getStopTime(next, 'arrival')   || getStopTime(next, 'departure');
+    const arrCurr = getStopTime(curr, 'arrival');
+    const depCurr = getStopTime(curr, 'departure') || arrCurr;
 
-    if (!depTime || !arrTime) continue;
+    // ── Cas : train à quai sur ce stop (entre arr et dep)
+    if (arrCurr && depCurr && now >= arrCurr.getTime() && now <= depCurr.getTime()) {
+      // Bearing vers le prochain stop si disponible
+      const bearing = next ? calcBearing(curr.lat, curr.lon, next.lat, next.lon) : 0;
+      return { lat: curr.lat, lon: curr.lon, bearing, segIdx: curr.rawIdx };
+    }
+
+    if (!next) break;
+
+    const depTime = depCurr;
+    const arrNext = getStopTime(next, 'arrival') || getStopTime(next, 'departure');
+
+    if (!depTime || !arrNext) continue;
 
     const dep = depTime.getTime();
-    const arr = arrTime.getTime();
+    const arr = arrNext.getTime();
 
+    // ── Cas : train en route entre curr et next
     if (now >= dep && now <= arr) {
       const t   = (now - dep) / (arr - dep);
       const lat = curr.lat + (next.lat - curr.lat) * t;
       const lon = curr.lon + (next.lon - curr.lon) * t;
-      const bearing = calcBearing(curr.lat, curr.lon, next.lat, next.lon);
-      // segIdx = index dans les stops BRUTS du train (pas filtrés)
-      return { lat, lon, bearing, segIdx: curr.rawIdx };
+      return { lat, lon, bearing: calcBearing(curr.lat, curr.lon, next.lat, next.lon), segIdx: curr.rawIdx };
     }
 
+    // ── Cas : avant le premier départ
     if (i === 0 && now < dep) {
-      return {
-        lat: curr.lat, lon: curr.lon,
-        bearing: calcBearing(curr.lat, curr.lon, next.lat, next.lon),
-        segIdx: curr.rawIdx
-      };
+      return { lat: curr.lat, lon: curr.lon, bearing: calcBearing(curr.lat, curr.lon, next.lat, next.lon), segIdx: curr.rawIdx };
     }
   }
 
+  // ── Fallback : après le dernier arrêt connu → dernière gare
   const last = stopsWithCoords[stopsWithCoords.length - 1];
   const prev = stopsWithCoords[stopsWithCoords.length - 2];
   return {
