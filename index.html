@@ -2,8 +2,40 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SNCF Live — Circulations en temps réel</title>
+
+<!-- PWA -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SNCF Live">
+<meta name="theme-color" content="#0A0A0F">
+<meta name="description" content="Circulations SNCF en temps réel — TGV, TER, Intercités">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23E30613'/><text y='72' x='50' text-anchor='middle' font-size='60'>🚅</text></svg>">
+
+<!-- Manifest inline via blob (pas de fichier séparé nécessaire) -->
+<script>
+const manifest = {
+  name: 'SNCF Live',
+  short_name: 'SNCF Live',
+  description: 'Circulations SNCF en temps réel',
+  start_url: './',
+  display: 'standalone',
+  background_color: '#0A0A0F',
+  theme_color: '#0A0A0F',
+  orientation: 'portrait-primary',
+  icons: [
+    { src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23E30613'/><text y='72' x='50' text-anchor='middle' font-size='60'>🚅</text></svg>", sizes: '192x192', type: 'image/svg+xml' },
+    { src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23E30613'/><text y='72' x='50' text-anchor='middle' font-size='60'>🚅</text></svg>", sizes: '512x512', type: 'image/svg+xml' }
+  ]
+};
+const blob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+const mlink = document.createElement('link');
+mlink.rel = 'manifest'; mlink.href = URL.createObjectURL(blob);
+document.currentScript.after(mlink);
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -11,12 +43,15 @@
   --red:#E30613; --dark:#0A0A0F; --panel:#111118; --card:#18181F;
   --border:rgba(255,255,255,0.07); --text:#F0EEE8; --muted:#6B6B7A;
   --green:#00E676; --orange:#FF9800; --blue:#2196F3; --grey:#555;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --tab-h: 60px;
 }
 *{margin:0;padding:0;box-sizing:border-box;}
 html,body{height:100%;overflow:hidden;}
 body{font-family:'DM Sans',sans-serif;background:var(--dark);color:var(--text);display:flex;flex-direction:column;}
 
-/* ── HEADER ── */
+/* ── HEADER desktop ── */
 header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;background:var(--panel);border-bottom:1px solid var(--border);z-index:1000;flex-shrink:0;}
 .logo{display:flex;align-items:center;gap:8px;flex-shrink:0;}
 .logo-badge{background:var(--red);color:#fff;font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1px;padding:3px 9px;border-radius:4px;}
@@ -47,7 +82,7 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 /* ── LAYOUT ── */
 .app-body{display:flex;flex:1;overflow:hidden;position:relative;}
 
-/* ── SIDEBAR ── */
+/* ── SIDEBAR desktop ── */
 .sidebar{width:320px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
 .sb-head{padding:14px 18px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
 .sb-title{font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1.5px;color:var(--muted);}
@@ -84,7 +119,7 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 .legend-row{display:flex;align-items:center;gap:7px;margin-bottom:4px;color:var(--muted);}
 .legend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
 
-/* ── DETAIL PANEL ── */
+/* ── DETAIL PANEL — desktop ── */
 .detail{position:absolute;right:0;top:0;bottom:0;width:330px;background:var(--panel);border-left:1px solid var(--border);z-index:900;transform:translateX(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;overflow:hidden;}
 .detail.open{transform:none;}
 .detail-head{padding:18px 18px 0;border-bottom:1px solid var(--border);flex-shrink:0;position:relative;}
@@ -99,36 +134,22 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 .stops-title{font-family:'Bebas Neue',sans-serif;font-size:12px;letter-spacing:1.5px;color:var(--muted);padding:12px 18px 8px;}
 
 /* ── STOPS LIST — timeline continue ── */
-/* Architecture : colonne gauche fixe (timeline) + colonne droite (infos) */
 .stops-container{padding:0 0 8px;}
 .stop-row{display:flex;gap:0;padding:0 18px;min-height:36px;}
 .stop-row.is-current{background:rgba(0,230,118,.04);}
-
-/* Colonne gauche : barre + dot */
 .stop-tl{width:22px;flex-shrink:0;position:relative;display:flex;justify-content:center;}
-
-/* La barre court de haut en bas à travers TOUS les stop-rows */
 .stop-tl-bar{position:absolute;top:0;bottom:0;left:50%;transform:translateX(-50%);width:2px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden;}
-/* Le remplissage vert est positionné en absolute dans la barre */
 .stop-tl-bar-fill{position:absolute;top:0;left:0;width:100%;background:var(--green);border-radius:2px;transition:height .3s;}
-/* Premier arrêt : la barre commence au centre du dot */
 .stop-row:first-child .stop-tl-bar{top:50%;}
-/* Dernier arrêt : la barre finit au centre du dot */
 .stop-row:last-child .stop-tl-bar{bottom:50%;}
-
-/* Le dot est centré verticalement sur la première ligne de texte */
 .stop-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;position:relative;z-index:2;margin-top:14px;transition:all .25s;}
 .stop-dot.done   {background:var(--green);opacity:0.7;}
 .stop-dot.current{background:var(--green);box-shadow:0 0 0 3px rgba(0,230,118,.3),0 0 8px rgba(0,230,118,.5);width:11px;height:11px;margin-top:12px;}
 .stop-dot.next   {background:var(--dark);border:1.5px solid rgba(255,255,255,.25);}
 .stop-dot.skip   {background:var(--dark);border:1.5px solid #2a2a2a;opacity:.4;}
-
-/* Colonne droite : infos */
 .stop-info{flex:1;padding:8px 0 8px 10px;}
-
 .st.struck{text-decoration:line-through;opacity:.38;font-size:10px;}
 .st.amended{color:var(--orange);font-weight:600;}
-.stop-info{flex:1;padding-bottom:2px;}
 .stop-name{font-size:13px;font-weight:500;margin-bottom:3px;}
 .stop-name.done{color:var(--muted);font-weight:400;}
 .stop-name.current{color:var(--green);font-weight:600;}
@@ -157,7 +178,6 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 .alert-body.open::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 .alert-body-inner{padding-top:8px;display:flex;flex-direction:column;gap:6px;}
 .alert-preview{font-size:12px;color:var(--muted);padding:6px 12px 2px;line-height:1.4;font-style:italic;}
-/* Cards d'alerte avec fond coloré */
 .alert-card{padding:10px 12px;border-radius:7px;border:1px solid;border-left-width:3px;}
 .alert-card.blocking  {background:rgba(227,6,19,.1); border-color:rgba(227,6,19,.35);}
 .alert-card.significant{background:rgba(255,152,0,.1);border-color:rgba(255,152,0,.35);}
@@ -188,6 +208,251 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 .leaflet-popup-content-wrapper{background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.6);}
 .leaflet-popup-tip{background:var(--card);}
 .leaflet-popup-content{margin:10px 14px;}
+
+/* ════════════════════════════════════════════════════
+   MOBILE — layout complet en dessous de 768px
+   ════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  /* Header mobile — compact */
+  header {
+    height: 52px;
+    padding: 0 14px;
+    padding-top: var(--safe-top);
+    gap: 10px;
+  }
+  .logo-title { display: none; }
+  .logo-badge { font-size: 14px; padding: 2px 8px; }
+  .search-wrap { max-width: none; }
+  .filters { display: none; } /* remplacé par tab bar */
+  #desktopSearchWrap { display: none; } /* remplacé par l'onglet Recherche */
+
+  /* App body — plein écran */
+  .app-body { position: relative; }
+
+  /* Sidebar — cachée sur mobile, remplacée par tab panel */
+  .sidebar { display: none; }
+
+  /* Carte — plein écran avec espace pour la tab bar */
+  #map-container {
+    position: absolute;
+    inset: 0;
+    bottom: calc(var(--tab-h) + var(--safe-bottom));
+  }
+
+  /* Status bar — au-dessus de la tab bar */
+  .status-bar {
+    bottom: calc(var(--tab-h) + var(--safe-bottom) + 10px);
+    font-size: 10px;
+    padding: 4px 12px;
+  }
+
+  /* Légende — repositionnée */
+  .legend {
+    bottom: calc(var(--tab-h) + var(--safe-bottom) + 46px);
+    right: 10px;
+    padding: 8px 11px;
+    font-size: 10px;
+  }
+
+  /* ── TAB BAR ── */
+  .tab-bar {
+    display: flex !important;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: calc(var(--tab-h) + var(--safe-bottom));
+    padding-bottom: var(--safe-bottom);
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    z-index: 1100;
+    backdrop-filter: blur(12px);
+  }
+  .tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    cursor: pointer;
+    transition: color .15s;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .4px;
+    text-transform: uppercase;
+    -webkit-tap-highlight-color: transparent;
+    padding-bottom: 2px;
+  }
+  .tab-item.active { color: var(--red); }
+  .tab-item svg { width: 22px; height: 22px; stroke-width: 1.8; }
+  .tab-item.active svg { stroke: var(--red); }
+  .tab-notif {
+    position: absolute;
+    top: 8px;
+    right: calc(50% - 18px);
+    background: var(--red);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    border-radius: 8px;
+    padding: 1px 5px;
+    min-width: 16px;
+    text-align: center;
+    line-height: 14px;
+  }
+
+  /* ── TAB PANELS ── */
+  /* Panel Liste */
+  .mobile-panel {
+    display: none;
+    position: fixed;
+    top: calc(52px + var(--safe-top));
+    left: 0;
+    right: 0;
+    bottom: calc(var(--tab-h) + var(--safe-bottom));
+    background: var(--panel);
+    z-index: 1050;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .mobile-panel.active { display: flex; }
+
+  /* Panel liste — header avec filtres chips horizontaux */
+  .mob-list-head {
+    padding: 10px 14px 8px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .mob-list-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .mob-list-title span {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 15px;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+  }
+  .mob-filters {
+    display: flex;
+    gap: 5px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mob-filters::-webkit-scrollbar { display: none; }
+  .mob-filters .chip { white-space: nowrap; flex-shrink: 0; font-size: 10px; padding: 3px 10px; }
+
+  /* Panel recherche */
+  .mob-search-panel {
+    padding: 14px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .mob-search-input {
+    width: 100%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 42px 10px 16px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    outline: none;
+    transition: border-color .2s;
+    -webkit-appearance: none;
+  }
+  .mob-search-input::placeholder { color: var(--muted); }
+  .mob-search-input:focus { border-color: rgba(227,6,19,.4); }
+  .mob-search-results {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ── BOTTOM SHEET — panneau détail mobile ── */
+  .detail {
+    /* Reset desktop */
+    position: fixed;
+    right: auto;
+    top: auto;
+    width: 100%;
+    left: 0;
+    bottom: 0;
+    height: 85vh;
+    max-height: 85vh;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0;
+    transform: translateY(100%);
+    transition: transform .32s cubic-bezier(.4,0,.2,1);
+    z-index: 1200;
+    padding-bottom: var(--safe-bottom);
+  }
+  .detail.open {
+    transform: translateY(0);
+  }
+  /* État mi-hauteur */
+  .detail.peek {
+    transform: translateY(50%);
+  }
+
+  /* Poignée de drag */
+  .detail-handle {
+    display: flex !important;
+    justify-content: center;
+    padding: 10px 0 4px;
+    flex-shrink: 0;
+    cursor: grab;
+    touch-action: none;
+  }
+  .detail-handle-bar {
+    width: 36px;
+    height: 4px;
+    background: rgba(255,255,255,.15);
+    border-radius: 2px;
+  }
+
+  /* Header du bottom sheet */
+  .detail-head {
+    padding: 8px 18px 0;
+  }
+  .det-close {
+    top: 10px;
+    right: 14px;
+  }
+  .det-num { font-size: 24px; }
+
+  /* Overlay sombre derrière le bottom sheet */
+  .detail-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.5);
+    z-index: 1190;
+    opacity: 0;
+    transition: opacity .32s;
+    backdrop-filter: blur(2px);
+  }
+  .detail-overlay.visible {
+    display: block;
+    opacity: 1;
+  }
+
+  /* Masque les éléments desktop inutiles sur mobile */
+  .legend { display: none; }
+}
+
+/* Tab bar cachée sur desktop */
+.tab-bar { display: none; }
+.detail-handle { display: none; }
+.detail-overlay { display: none; }
+.mobile-panel { display: none; }
 </style>
 </head>
 <body>
@@ -198,7 +463,7 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
     <span class="logo-title">LIVE</span>
     <div class="live-dot"></div>
   </div>
-  <div class="search-wrap">
+  <div class="search-wrap" id="desktopSearchWrap">
     <input class="search-input" id="searchInput" placeholder="Numéro de train, ville de départ ou d'arrivée…" autocomplete="off">
     <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
     <div class="search-dd" id="searchDd"></div>
@@ -213,6 +478,7 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 </header>
 
 <div class="app-body">
+  <!-- SIDEBAR desktop -->
   <div class="sidebar">
     <div class="sb-head">
       <span class="sb-title">Circulations du jour</span>
@@ -224,6 +490,7 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
     </div>
   </div>
 
+  <!-- CARTE -->
   <div id="map-container">
     <div id="map"></div>
     <div class="status-bar" id="statusBar">
@@ -236,19 +503,78 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
       <div class="legend-row"><div class="legend-dot" style="background:var(--red)"></div>Retard important</div>
       <div class="legend-row"><div class="legend-dot" style="background:var(--blue)"></div>Service modifié</div>
     </div>
+  </div>
 
-    <!-- DETAIL PANEL -->
-    <div class="detail" id="detailPanel">
-      <div class="detail-head">
-        <button class="det-close" onclick="closeDetail()">✕ fermer</button>
-        <div class="det-num" id="detNum"></div>
-        <div class="det-route" id="detRoute"></div>
-        <div class="det-meta" id="detMeta"></div>
+  <!-- PANEL LISTE mobile -->
+  <div class="mobile-panel" id="mobListPanel">
+    <div class="mob-list-head">
+      <div class="mob-list-title">
+        <span>Circulations du jour</span>
+        <span class="count-badge" id="countBadgeMob">…</span>
       </div>
-      <div class="detail-body" id="detBody"></div>
+      <div class="mob-filters">
+        <button class="chip active" data-f="all"  onclick="setFilter('all')">Tous</button>
+        <button class="chip"        data-f="TGV"  onclick="setFilter('TGV')">TGV</button>
+        <button class="chip"        data-f="TER"  onclick="setFilter('TER')">TER</button>
+        <button class="chip"        data-f="IC"   onclick="setFilter('IC')">Intercités</button>
+        <button class="chip"        data-f="late" onclick="setFilter('late')">⚠️ Perturbés</button>
+      </div>
+    </div>
+    <div class="banner" id="bannerMob"></div>
+    <div class="trains-list" id="trainsListMob">
+      <div class="loader"><div class="spin"></div><span>Chargement…</span></div>
     </div>
   </div>
+
+  <!-- PANEL RECHERCHE mobile -->
+  <div class="mobile-panel" id="mobSearchPanel">
+    <div class="mob-search-panel">
+      <div style="position:relative">
+        <input class="mob-search-input" id="mobSearchInput" placeholder="Numéro, ville de départ ou d'arrivée…" autocomplete="off">
+        <svg style="position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      </div>
+    </div>
+    <div class="mob-search-results" id="mobSearchResults">
+      <div class="empty">Recherche un numéro de train ou une ville</div>
+    </div>
+  </div>
+
+  <!-- OVERLAY bottom sheet -->
+  <div class="detail-overlay" id="detailOverlay" onclick="closeDetail()"></div>
+
+  <!-- DETAIL PANEL (desktop: panneau latéral / mobile: bottom sheet) -->
+  <div class="detail" id="detailPanel">
+    <div class="detail-handle" id="detailHandle">
+      <div class="detail-handle-bar"></div>
+    </div>
+    <div class="detail-head">
+      <button class="det-close" onclick="closeDetail()">✕ fermer</button>
+      <div class="det-num" id="detNum"></div>
+      <div class="det-route" id="detRoute"></div>
+      <div class="det-meta" id="detMeta"></div>
+    </div>
+    <div class="detail-body" id="detBody"></div>
+  </div>
 </div>
+
+<!-- TAB BAR mobile -->
+<nav class="tab-bar" id="tabBar">
+  <div class="tab-item active" id="tab-map" onclick="switchTab('map')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+    Carte
+  </div>
+  <div class="tab-item" id="tab-list" onclick="switchTab('list')">
+    <div style="position:relative;display:inline-block">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      <span class="tab-notif" id="tabNotif" style="display:none"></span>
+    </div>
+    Trains
+  </div>
+  <div class="tab-item" id="tab-search" onclick="switchTab('search')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    Recherche
+  </div>
+</nav>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script>
@@ -265,33 +591,97 @@ const PROXY = 'https://sncf-poxy-live.onrender.com';
 const REFRESH_MS = 60000;
 
 let map, allTrains = [], allAlerts = [], markers = {}, routeLayers = [], selId = null, activeFilter = 'all';
-let searchTimer = null;
+let searchTimer = null, mobSearchTimer = null;
+let isMobile = () => window.innerWidth <= 768;
+let activeTab = 'map';
 
 // ══════════════════════════════════════════════════════
-// CARTE — tuiles en français (OpenStreetMap France)
+// TAB BAR — navigation mobile
+// ══════════════════════════════════════════════════════
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab-item').forEach(el =>
+    el.classList.toggle('active', el.id === 'tab-' + tab)
+  );
+  document.getElementById('mobListPanel').classList.toggle('active', tab === 'list');
+  document.getElementById('mobSearchPanel').classList.toggle('active', tab === 'search');
+
+  // Focus auto sur le champ de recherche mobile
+  if (tab === 'search') {
+    setTimeout(() => document.getElementById('mobSearchInput')?.focus(), 100);
+  }
+  // Ferme le détail si on change d'onglet
+  if (tab !== 'map') closeDetail();
+}
+
+// ══════════════════════════════════════════════════════
+// BOTTOM SHEET — drag to resize
+// ══════════════════════════════════════════════════════
+(function initBottomSheet() {
+  let startY = 0, startH = 0, dragging = false;
+  const handle = document.getElementById('detailHandle');
+  const panel  = document.getElementById('detailPanel');
+
+  function onStart(e) {
+    if (!isMobile()) return;
+    dragging = true;
+    startY = (e.touches ? e.touches[0].clientY : e.clientY);
+    startH = panel.getBoundingClientRect().height;
+    panel.style.transition = 'none';
+  }
+  function onMove(e) {
+    if (!dragging) return;
+    const y = (e.touches ? e.touches[0].clientY : e.clientY);
+    const delta = y - startY;
+    const newH = Math.max(120, Math.min(window.innerHeight * 0.92, startH - delta));
+    panel.style.height = newH + 'px';
+    panel.style.maxHeight = newH + 'px';
+    e.preventDefault();
+  }
+  function onEnd(e) {
+    if (!dragging) return;
+    dragging = false;
+    panel.style.transition = '';
+    const h = panel.getBoundingClientRect().height;
+    const vh = window.innerHeight;
+    // Snap : si trop bas → ferme, sinon garde
+    if (h < vh * 0.18) {
+      closeDetail();
+    } else if (h > vh * 0.75) {
+      panel.style.height = '92vh';
+      panel.style.maxHeight = '92vh';
+    } else {
+      panel.style.height = '55vh';
+      panel.style.maxHeight = '55vh';
+    }
+  }
+
+  handle.addEventListener('touchstart', onStart, { passive: true });
+  handle.addEventListener('touchmove',  onMove,  { passive: false });
+  handle.addEventListener('touchend',   onEnd);
+  handle.addEventListener('mousedown',  onStart);
+  window.addEventListener('mousemove',  onMove);
+  window.addEventListener('mouseup',    onEnd);
+})();
+
+// ══════════════════════════════════════════════════════
+// CARTE
 // ══════════════════════════════════════════════════════
 function initMap() {
   map = L.map('map', { center:[46.8, 2.3], zoom:6, zoomControl:false });
   L.control.zoom({ position:'bottomright' }).addTo(map);
-
-  // Fond sombre CartoDB sans labels
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
     maxZoom:19, subdomains:'abcd',
     attribution:'&copy; <a href="https://carto.com">CARTO</a> &copy; <a href="https://www.openstreetmap.org">OSM</a>'
   }).addTo(map);
-
-  // Labels CartoDB dark_only_labels — noms issus d'OSM (français pour la France)
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
     maxZoom:19, subdomains:'abcd'
   }).addTo(map);
-
   map.on('click', closeDetail);
 }
 
 // ══════════════════════════════════════════════════════
 // INTERPOLATION DE POSITION
-// Calcule la position du train à l'instant T entre
-// deux gares consécutives, en tenant compte des retards.
 // ══════════════════════════════════════════════════════
 function interpolatePosition(train) {
   const rawStops = train.stops || [];
@@ -301,15 +691,10 @@ function interpolatePosition(train) {
 
   const now = Date.now();
 
-  // ── Cas 0 : pas de stops avec coords → fallback sur lat/lon du train
   if (stopsWithCoords.length === 0) {
-    if (train.lat && train.lon) {
-      return { lat: train.lat, lon: train.lon, bearing: 0, segIdx: 0 };
-    }
+    if (train.lat && train.lon) return { lat: train.lat, lon: train.lon, bearing: 0, segIdx: 0 };
     return null;
   }
-
-  // ── Cas 1 : un seul stop avec coords
   if (stopsWithCoords.length === 1) {
     return { lat: stopsWithCoords[0].lat, lon: stopsWithCoords[0].lon, bearing: 0, segIdx: stopsWithCoords[0].rawIdx };
   }
@@ -317,99 +702,60 @@ function interpolatePosition(train) {
   for (let i = 0; i < stopsWithCoords.length; i++) {
     const curr = stopsWithCoords[i];
     const next = stopsWithCoords[i + 1];
-
     const arrCurr = getStopTime(curr, 'arrival');
     const depCurr = getStopTime(curr, 'departure') || arrCurr;
 
-    // ── Cas : train à quai sur ce stop (entre arr et dep)
     if (arrCurr && depCurr && now >= arrCurr.getTime() && now <= depCurr.getTime()) {
-      // Bearing vers le prochain stop si disponible
       const bearing = next ? calcBearing(curr.lat, curr.lon, next.lat, next.lon) : 0;
       return { lat: curr.lat, lon: curr.lon, bearing, segIdx: curr.rawIdx };
     }
-
     if (!next) break;
 
     const depTime = depCurr;
     const arrNext = getStopTime(next, 'arrival') || getStopTime(next, 'departure');
-
     if (!depTime || !arrNext) continue;
 
-    const dep = depTime.getTime();
-    const arr = arrNext.getTime();
-
-    // ── Cas : train en route entre curr et next
+    const dep = depTime.getTime(), arr = arrNext.getTime();
     if (now >= dep && now <= arr) {
-      const t   = (now - dep) / (arr - dep);
-      const lat = curr.lat + (next.lat - curr.lat) * t;
-      const lon = curr.lon + (next.lon - curr.lon) * t;
-      return { lat, lon, bearing: calcBearing(curr.lat, curr.lon, next.lat, next.lon), segIdx: curr.rawIdx };
+      const t = (now - dep) / (arr - dep);
+      return { lat: curr.lat + (next.lat - curr.lat) * t, lon: curr.lon + (next.lon - curr.lon) * t,
+               bearing: calcBearing(curr.lat, curr.lon, next.lat, next.lon), segIdx: curr.rawIdx };
     }
-
-    // ── Cas : avant le premier départ
     if (i === 0 && now < dep) {
       return { lat: curr.lat, lon: curr.lon, bearing: calcBearing(curr.lat, curr.lon, next.lat, next.lon), segIdx: curr.rawIdx };
     }
   }
 
-  // ── Fallback : après le dernier arrêt connu → dernière gare
   const last = stopsWithCoords[stopsWithCoords.length - 1];
   const prev = stopsWithCoords[stopsWithCoords.length - 2];
-  return {
-    lat: last.lat, lon: last.lon,
-    bearing: calcBearing(prev.lat, prev.lon, last.lat, last.lon),
-    segIdx: last.rawIdx
-  };
+  return { lat: last.lat, lon: last.lon, bearing: calcBearing(prev.lat, prev.lon, last.lat, last.lon), segIdx: last.rawIdx };
 }
 
 function getStopTime(stop, kind) {
-  // Prend l'heure réelle (avec retard) si disponible, sinon l'heure prévue
   const t = stop[kind]?.time;
   if (!t) return null;
   try { return new Date(t); } catch { return null; }
 }
 
-// Calcule le cap (bearing) entre deux points GPS, en degrés
 function calcBearing(lat1, lon1, lat2, lon2) {
   const toRad = d => d * Math.PI / 180;
-  const dLon  = toRad(lon2 - lon1);
-  const y     = Math.sin(dLon) * Math.cos(toRad(lat2));
-  const x     = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2))
-              - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+  const dLon = toRad(lon2 - lon1);
+  const y = Math.sin(dLon) * Math.cos(toRad(lat2));
+  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
   return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
 }
 
 // ══════════════════════════════════════════════════════
-// ICÔNE TRAIN — forme TGV vue du dessus
-// Rectangle à bords arrondis + pointe triangulaire avant
-// Orienté selon le bearing (direction de déplacement)
+// ICÔNE TRAIN
 // ══════════════════════════════════════════════════════
 function trainIcon(train, bearing, color, glow) {
   const lbl = { TGV:'TGV', TER:'TER', IC:'IC' }[train.type] || train.type;
-
-  // La forme : pointe en haut (nord = 0°), rotée selon bearing
-  // Largeur 14px, longueur 28px + pointe 6px = 34px total
-  // Centré sur (22,22) dans un viewBox 44x44
-  const shape = `
-    M 22,7
-    L 29,13
-    Q 30,13 30,15
-    L 30,33
-    Q 30,37 26,37
-    L 18,37
-    Q 14,37 14,33
-    L 14,15
-    Q 14,13 15,13
-    Z
-  `;
-
+  const shape = `M 22,7 L 29,13 Q 30,13 30,15 L 30,33 Q 30,37 26,37 L 18,37 Q 14,37 14,33 L 14,15 Q 14,13 15,13 Z`;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">
     <g transform="rotate(${bearing}, 22, 22)">
       <path d="${shape}" fill="${color}" opacity="0.95" stroke="rgba(255,255,255,0.55)" stroke-width="1"/>
     </g>
-    <text x="22" y="25" text-anchor="middle"
-          font-family="DM Mono,monospace" font-size="7" font-weight="700"
-          fill="white" opacity="0.95" letter-spacing="0.3">${lbl}</text>
+    <text x="22" y="25" text-anchor="middle" font-family="DM Mono,monospace" font-size="7" font-weight="700" fill="white" opacity="0.95" letter-spacing="0.3">${lbl}</text>
   </svg>`;
   return L.divIcon({ html: svg, className: '', iconSize:[44,44], iconAnchor:[22,22] });
 }
@@ -418,31 +764,12 @@ function trainIcon(train, bearing, color, glow) {
 // TRACÉ DE ROUTE
 // ══════════════════════════════════════════════════════
 function drawRoute(train, color) {
-  const stops = (train.stops || []).filter(s =>
-    s.lat && s.lon && s.scheduleRelationship !== 'SKIPPED'
-  );
+  const stops = (train.stops || []).filter(s => s.lat && s.lon && s.scheduleRelationship !== 'SKIPPED');
   if (stops.length < 2) return;
-
   const coords = stops.map(s => [s.lat, s.lon]);
-
-  // Ligne de base (grisée, fond)
-  const baseLine = L.polyline(coords, {
-    color: 'rgba(255,255,255,0.08)',
-    weight: 3,
-    lineCap: 'round',
-    lineJoin: 'round',
-  }).addTo(map);
-
-  // Ligne colorée
-  const colorLine = L.polyline(coords, {
-    color,
-    weight: 2.5,
-    opacity: 0.7,
-    lineCap: 'round',
-    lineJoin: 'round',
-    dashArray: train.rtStatus === 'MODIFIED_SERVICE' ? '6,4' : null,
-  }).addTo(map);
-
+  const baseLine  = L.polyline(coords, { color:'rgba(255,255,255,0.08)', weight:3, lineCap:'round', lineJoin:'round' }).addTo(map);
+  const colorLine = L.polyline(coords, { color, weight:2.5, opacity:0.7, lineCap:'round', lineJoin:'round',
+    dashArray: train.rtStatus === 'MODIFIED_SERVICE' ? '6,4' : null }).addTo(map);
   routeLayers.push(baseLine, colorLine);
 }
 
@@ -461,8 +788,6 @@ async function loadTrains() {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     allTrains = data.trains || [];
-
-    // Chargement alertes en parallèle (silencieux si échec)
     try {
       const ra = await fetch(`${PROXY}/alerts`, { signal: AbortSignal.timeout(10000) });
       const da = await ra.json();
@@ -472,16 +797,19 @@ async function loadTrains() {
     const nb  = allTrains.filter(t => t.rtStatus !== 'NO_DISRUPTION').length;
     const age = data.cacheAgeSec != null ? ` · données ${data.cacheAgeSec}s` : '';
     setStatus(`${allTrains.length} trains · ${nb} perturbés${age} · màj ${hhmm()}`);
+
+    // Badge notif sur l'onglet Trains
+    const notif = document.getElementById('tabNotif');
+    if (nb > 0) { notif.textContent = nb; notif.style.display = 'block'; }
+    else notif.style.display = 'none';
+
   } catch(e) {
     console.error(e);
     setStatus('⚠ Erreur de connexion');
     if (!allTrains.length) {
-      document.getElementById('trainsList').innerHTML = `
-        <div class="err-box">
-          <strong>Serveur injoignable</strong>
-          En plan gratuit Render peut prendre <strong>30–60 s</strong> à se réveiller.<br>
-          <a href="${PROXY}/health" target="_blank" style="color:var(--red)">→ Tester /health</a>
-        </div>`;
+      const errHTML = `<div class="err-box"><strong>Serveur injoignable</strong>En plan gratuit Render peut prendre <strong>30–60 s</strong> à se réveiller.<br><a href="${PROXY}/health" target="_blank" style="color:var(--red)">→ Tester /health</a></div>`;
+      document.getElementById('trainsList').innerHTML = errHTML;
+      document.getElementById('trainsListMob').innerHTML = errHTML;
     }
   }
 }
@@ -489,27 +817,17 @@ async function loadTrains() {
 // ══════════════════════════════════════════════════════
 // RENDU
 // ══════════════════════════════════════════════════════
-// Filtre silencieux — trains encore en circulation
 function isStillRunning(t) {
   if (!t.toTime) return true;
-  try { return new Date(t.toTime).getTime() > Date.now(); }
-  catch { return true; }
+  try { return new Date(t.toTime).getTime() > Date.now(); } catch { return true; }
 }
-
-// Filtre silencieux — trains circulant en France métropolitaine
-// On vérifie que les coordonnées du 1er et dernier arrêt avec coords
-// sont dans le rectangle France (lat 41.3–51.1 / lon -5.2–9.6)
 function isInFrance(t) {
   const FR = { latMin:41.3, latMax:51.1, lonMin:-5.2, lonMax:9.6 };
-  const inBox = (lat, lon) =>
-    lat >= FR.latMin && lat <= FR.latMax && lon >= FR.lonMin && lon <= FR.lonMax;
+  const inBox = (lat, lon) => lat >= FR.latMin && lat <= FR.latMax && lon >= FR.lonMin && lon <= FR.lonMax;
   const stops = (t.stops || []).filter(s => s.lat && s.lon);
-  if (!stops.length) return true; // pas de coords → on garde par sécurité
-  const first = stops[0];
-  const last  = stops[stops.length - 1];
-  return inBox(first.lat, first.lon) && inBox(last.lat, last.lon);
+  if (!stops.length) return true;
+  return inBox(stops[0].lat, stops[0].lon) && inBox(stops[stops.length-1].lat, stops[stops.length-1].lon);
 }
-
 function filtered() {
   const running = allTrains.filter(t => isStillRunning(t) && isInFrance(t));
   if (activeFilter === 'late') return running.filter(t => t.delay > 0 || t.rtStatus === 'NO_SERVICE' || t.rtStatus === 'MODIFIED_SERVICE');
@@ -519,10 +837,13 @@ function filtered() {
 
 function render() {
   const list = filtered();
-  document.getElementById('countBadge').textContent = list.length;
+  document.getElementById('countBadge').textContent    = list.length;
+  document.getElementById('countBadgeMob').textContent = list.length;
   renderBanner();
   if (!list.length) {
-    document.getElementById('trainsList').innerHTML = `<div class="empty">Aucun train pour ce filtre.</div>`;
+    const empty = `<div class="empty">Aucun train pour ce filtre.</div>`;
+    document.getElementById('trainsList').innerHTML    = empty;
+    document.getElementById('trainsListMob').innerHTML = empty;
     clearMarkers(); return;
   }
   renderCards(list);
@@ -530,11 +851,11 @@ function render() {
 }
 
 function renderCards(list) {
-  document.getElementById('trainsList').innerHTML = list.map(t => {
+  const html = list.map(t => {
     const { cls, delayLabel, delayColor } = statusInfo(t);
-    const tc   = `tag-${t.type.toLowerCase()}`;
-    const dep  = t.fromTime ? fmtISO(t.fromTime) : null;
-    const arr  = t.toTime   ? fmtISO(t.toTime)   : null;
+    const tc  = `tag-${t.type.toLowerCase()}`;
+    const dep = t.fromTime ? fmtISO(t.fromTime) : null;
+    const arr = t.toTime   ? fmtISO(t.toTime)   : null;
     const depD = t.stops?.[0]?.departure?.delay ? Math.round(t.stops[0].departure.delay/60) : 0;
     return `<div class="t-card ${cls}${selId===t.id?' selected':''}" onclick="selectTrain('${t.id}')">
       <div class="tc-top">
@@ -550,6 +871,8 @@ function renderCards(list) {
       </div>
     </div>`;
   }).join('');
+  document.getElementById('trainsList').innerHTML    = html;
+  document.getElementById('trainsListMob').innerHTML = html;
 }
 
 function renderMarkers(list) {
@@ -559,17 +882,14 @@ function renderMarkers(list) {
     if (t.rtStatus === 'NO_SERVICE') return;
     const pos = interpolatePosition(t);
     if (!pos) return;
-
     const { color, glow } = mkColor(t);
     const icon = trainIcon(t, pos.bearing, color, glow);
     const m = L.marker([pos.lat, pos.lon], { icon, zIndexOffset: t.delay > 0 ? 100 : 0 }).addTo(map);
-
     m.bindPopup(`<div style="font-family:'DM Sans',sans-serif;font-size:13px;min-width:150px">
       <b>${t.type} ${t.num}</b><br>
       <span style="color:#888;font-size:12px">${t.from} → ${t.to}</span><br>
       <span style="color:${color}">${t.delay > 0 ? '+'+t.delay+' min' : "À l'heure"}</span>
     </div>`, { closeButton:false });
-
     m.on('click', e => { e.originalEvent?.stopPropagation(); selectTrain(t.id); });
     markers[t.id] = m;
   });
@@ -587,10 +907,13 @@ function clearMarkers() {
 function renderBanner() {
   const cancel = allTrains.filter(t => t.rtStatus === 'NO_SERVICE').length;
   const big    = allTrains.filter(t => t.delay > 15).length;
-  const el = document.getElementById('banner');
-  if (!cancel && !big) { el.classList.remove('show'); return; }
-  el.className = `banner show ${cancel ? 'alert' : 'warn'}`;
-  el.innerHTML = [cancel ? `⛔ ${cancel} supprimé(s)` : '', big ? `⚠️ ${big} retard(s) > 15 min` : ''].filter(Boolean).join(' · ');
+  const show   = cancel || big;
+  const cls    = `banner${show?' show':''} ${cancel?'alert':'warn'}`;
+  const html   = show ? [cancel ? `⛔ ${cancel} supprimé(s)` : '', big ? `⚠️ ${big} retard(s) > 15 min` : ''].filter(Boolean).join(' · ') : '';
+  ['banner','bannerMob'].forEach(id => {
+    const el = document.getElementById(id);
+    el.className = cls; el.innerHTML = html;
+  });
 }
 
 // ══════════════════════════════════════════════════════
@@ -604,12 +927,11 @@ function selectTrain(id) {
   const t = allTrains.find(x => x.id === id);
   if (!t) return;
 
-  // Masque tous les marqueurs sauf le train sélectionné
-  // On supprime aussi du dictionnaire pour permettre la recréation à la volée
-  Object.entries(markers).forEach(([mid, m]) => {
-    try { map.removeLayer(m); } catch(e){}
-  });
-  // Remet uniquement le marqueur sélectionné s'il existait
+  // Sur mobile : bascule sur l'onglet carte
+  if (isMobile()) switchTab('map');
+
+  // Gestion marqueurs
+  Object.entries(markers).forEach(([mid, m]) => { try { map.removeLayer(m); } catch(e){} });
   const existingMarker = markers[id];
   markers = {};
   if (existingMarker) {
@@ -617,16 +939,11 @@ function selectTrain(id) {
     markers[id] = existingMarker;
   }
 
-  // Tracé de route
   clearRoutes();
   const { color, glow } = mkColor(t);
   drawRoute(t, color);
 
-  // Position interpolée
   const pos = interpolatePosition(t);
-
-  // Si le train n'avait pas de marqueur (pas de coords au dernier render),
-  // on en crée un à la volée avec la position calculée maintenant
   if (pos && !markers[id] && t.rtStatus !== 'NO_SERVICE') {
     const icon = trainIcon(t, pos.bearing, color, glow);
     const m = L.marker([pos.lat, pos.lon], { icon, zIndexOffset: 1000 }).addTo(map);
@@ -639,15 +956,24 @@ function selectTrain(id) {
     markers[id] = m;
   }
 
-  // Centrage
   if (map && pos) map.setView([pos.lat, pos.lon], 9, { animate:true });
   else if (map && t.lat && t.lon) map.setView([t.lat, t.lon], 8, { animate:true });
+
+  // Overlay mobile
+  if (isMobile()) {
+    const overlay = document.getElementById('detailOverlay');
+    overlay.classList.add('visible');
+    // Reset hauteur bottom sheet
+    const panel = document.getElementById('detailPanel');
+    panel.style.height = '';
+    panel.style.maxHeight = '';
+  }
 
   showDetail(t, pos);
 }
 
 // ══════════════════════════════════════════════════════
-// PANNEAU DÉTAIL avec stops améliorés
+// PANNEAU DÉTAIL
 // ══════════════════════════════════════════════════════
 function showDetail(t, pos) {
   const { delayLabel, delayColor } = statusInfo(t);
@@ -662,17 +988,13 @@ function showDetail(t, pos) {
     <span class="meta-pill" style="font-size:10px">${rtMap[t.rtStatus]||''}</span>
   `;
 
-  const stops  = t.stops || [];
-  const now    = Date.now();
+  const stops = t.stops || [];
+  const now   = Date.now();
 
-  // ── Alertes liées à ce train ──
-  // Le matching est robuste : on compare les IDs partiels car SNCF
-  // utilise des formats différents dans trip_updates vs service_alerts
   const trainAlerts = allAlerts.filter(a => {
     if (!a.affected?.length) return false;
     return a.affected.some(e => {
       if (e.tripId && t.tripId) {
-        // Comparaison partielle — ex: "OCESN8504F..." contient "8504"
         const short = t.num?.toString();
         if (short && e.tripId.includes(short)) return true;
         if (t.tripId.includes(e.tripId) || e.tripId.includes(t.tripId)) return true;
@@ -685,212 +1007,109 @@ function showDetail(t, pos) {
     });
   });
 
-  // Si pas d'alerte matchée mais train retardé/supprimé → alerte synthétique
   const syntheticAlerts = [];
   if (!trainAlerts.length && t.rtStatus !== 'NO_DISRUPTION') {
-    if (t.rtStatus === 'NO_SERVICE') {
-      syntheticAlerts.push({ severity:'blocking', cause:'OTHER_CAUSE', effect:'NO_SERVICE',
-        headerText:'Train supprimé', description:'Ce train est supprimé aujourd\'hui.' });
-    } else if (t.rtStatus === 'SIGNIFICANT_DELAYS') {
-      syntheticAlerts.push({ severity:'significant', cause:'UNKNOWN_CAUSE', effect:'SIGNIFICANT_DELAYS',
-        headerText:`Retard de ${t.delay} minute${t.delay > 1 ? 's' : ''}`,
-        description:'Des informations détaillées ne sont pas disponibles pour le moment.' });
-    } else if (t.rtStatus === 'MODIFIED_SERVICE') {
-      syntheticAlerts.push({ severity:'info', cause:'OTHER_CAUSE', effect:'MODIFIED_SERVICE',
-        headerText:'Service modifié', description:'Certains arrêts ont été modifiés sur ce trajet.' });
-    }
+    if (t.rtStatus === 'NO_SERVICE')
+      syntheticAlerts.push({ severity:'blocking', cause:'OTHER_CAUSE', effect:'NO_SERVICE', headerText:'Train supprimé', description:"Ce train est supprimé aujourd'hui." });
+    else if (t.rtStatus === 'SIGNIFICANT_DELAYS')
+      syntheticAlerts.push({ severity:'significant', cause:'UNKNOWN_CAUSE', effect:'SIGNIFICANT_DELAYS', headerText:`Retard de ${t.delay} minute${t.delay>1?'s':''}`, description:'Des informations détaillées ne sont pas disponibles pour le moment.' });
+    else if (t.rtStatus === 'MODIFIED_SERVICE')
+      syntheticAlerts.push({ severity:'info', cause:'OTHER_CAUSE', effect:'MODIFIED_SERVICE', headerText:'Service modifié', description:'Certains arrêts ont été modifiés sur ce trajet.' });
   }
 
   const alertsToShow = [...trainAlerts, ...syntheticAlerts];
-
-  const causeLabels = {
-    STRIKE:'Grève', TECHNICAL_PROBLEM:'Problème technique', ACCIDENT:'Accident',
-    WEATHER:'Conditions météo', MAINTENANCE:'Travaux', CONSTRUCTION:'Travaux',
-    POLICE_ACTIVITY:"Intervention des forces de l'ordre", MEDICAL_EMERGENCY:'Urgence médicale',
-    DEMONSTRATION:'Manifestation', OTHER_CAUSE:'Autre cause', UNKNOWN_CAUSE:null
-  };
-  const effectLabels = {
-    NO_SERVICE:'Service supprimé', SIGNIFICANT_DELAYS:'Retards importants',
-    REDUCED_SERVICE:'Service réduit', MODIFIED_SERVICE:'Service modifié',
-    DETOUR:'Déviation', ADDITIONAL_SERVICE:'Service supplémentaire'
-  };
+  const causeLabels = { STRIKE:'Grève', TECHNICAL_PROBLEM:'Problème technique', ACCIDENT:'Accident', WEATHER:'Conditions météo', MAINTENANCE:'Travaux', CONSTRUCTION:'Travaux', POLICE_ACTIVITY:"Intervention des forces de l'ordre", MEDICAL_EMERGENCY:'Urgence médicale', DEMONSTRATION:'Manifestation', OTHER_CAUSE:'Autre cause', UNKNOWN_CAUSE:null };
+  const effectLabels = { NO_SERVICE:'Service supprimé', SIGNIFICANT_DELAYS:'Retards importants', REDUCED_SERVICE:'Service réduit', MODIFIED_SERVICE:'Service modifié', DETOUR:'Déviation', ADDITIONAL_SERVICE:'Service supplémentaire' };
 
   const alertsHTML = alertsToShow.length ? (() => {
-    // Calcule la sévérité effective de chaque alerte (déduite si absente)
     const withSev = alertsToShow.map(a => {
-      const txt = ((a.headerText || '') + ' ' + (a.description || '')).toLowerCase();
-      // On ne fait confiance à a.severity que s'il vaut 'blocking' ou 'significant'
-      // car la SNCF met souvent 'info' même sur des alertes de retard/perturbation
-      const isDisrupted =
-        a.effect === 'SIGNIFICANT_DELAYS' ||
-        a.effect === 'REDUCED_SERVICE'    ||
-        a.effect === 'MODIFIED_SERVICE'   ||
-        a.cause  === 'STRIKE'             ||
-        a.cause  === 'ACCIDENT'           ||
-        a.cause  === 'TECHNICAL_PROBLEM'  ||
-        a.cause  === 'DEMONSTRATION'      ||
-        a.cause  === 'WEATHER'            ||
-        a.cause  === 'POLICE_ACTIVITY'    ||
-        a.cause  === 'MEDICAL_EMERGENCY'  ||
-        txt.includes('retard')            ||
-        txt.includes('supprim')           ||
-        txt.includes('perturbat')         ||
-        txt.includes('incident')          ||
-        txt.includes('panne')             ||
-        txt.includes('grève');
-
-      const effectiveSev =
-        (a.severity === 'blocking' || a.effect === 'NO_SERVICE') ? 'blocking' :
-        (a.severity === 'significant' || isDisrupted)            ? 'significant' :
-        'info';
-
+      const txt = ((a.headerText||'') + ' ' + (a.description||'')).toLowerCase();
+      const isDisrupted = a.effect==='SIGNIFICANT_DELAYS'||a.effect==='REDUCED_SERVICE'||a.effect==='MODIFIED_SERVICE'||a.cause==='STRIKE'||a.cause==='ACCIDENT'||a.cause==='TECHNICAL_PROBLEM'||a.cause==='DEMONSTRATION'||a.cause==='WEATHER'||a.cause==='POLICE_ACTIVITY'||a.cause==='MEDICAL_EMERGENCY'||txt.includes('retard')||txt.includes('supprim')||txt.includes('perturbat')||txt.includes('incident')||txt.includes('panne')||txt.includes('grève');
+      const effectiveSev = (a.severity==='blocking'||a.effect==='NO_SERVICE') ? 'blocking' : (a.severity==='significant'||isDisrupted) ? 'significant' : 'info';
       return { ...a, effectiveSev };
     });
-
-    const topSeverity = withSev.some(a => a.effectiveSev === 'blocking') ? 'blocking'
-                      : withSev.some(a => a.effectiveSev === 'significant') ? 'significant' : 'info';
-    const severityLabel = { blocking:'⛔ Suppression', significant:'⚠ Perturbation', info:'ℹ Info trafic' }[topSeverity];
-    const topAlert   = withSev.find(a => a.effectiveSev === topSeverity) || withSev[0];
-    const preview    = topAlert.headerText || topAlert.description || '';
-    const previewTxt = preview.length > 80 ? preview.slice(0, 80) + '…' : preview;
+    const topSev = withSev.some(a=>a.effectiveSev==='blocking')?'blocking':withSev.some(a=>a.effectiveSev==='significant')?'significant':'info';
+    const topLabel = {blocking:'⛔ Suppression',significant:'⚠ Perturbation',info:'ℹ Info trafic'}[topSev];
+    const topAlert = withSev.find(a=>a.effectiveSev===topSev)||withSev[0];
+    const preview = (topAlert.headerText||topAlert.description||'');
+    const previewTxt = preview.length > 80 ? preview.slice(0,80)+'…' : preview;
     const uid = 'al_' + Math.random().toString(36).slice(2,7);
-
     const cards = withSev.map(a => {
       const cause  = causeLabels[a.cause]  ?? null;
       const effect = effectLabels[a.effect] ?? null;
-      const label  = [cause, effect].filter(Boolean).join(' · ');
-      const title  = a.headerText || label || 'Perturbation';
+      const label  = [cause,effect].filter(Boolean).join(' · ');
+      const title  = a.headerText||label||'Perturbation';
       const desc   = a.description && a.description !== a.headerText ? a.description : null;
-      return `<div class="alert-card ${a.effectiveSev}">
-        <div class="alert-cause">${label || 'Perturbation'}</div>
-        <div class="alert-text">${title}${desc ? '<br><span style="opacity:.7;font-size:11px">'+desc+'</span>' : ''}</div>
-      </div>`;
+      return `<div class="alert-card ${a.effectiveSev}"><div class="alert-cause">${label||'Perturbation'}</div><div class="alert-text">${title}${desc?'<br><span style="opacity:.7;font-size:11px">'+desc+'</span>':''}</div></div>`;
     }).join('');
-
     return `<div class="alert-section">
       <div class="alert-toggle" onclick="toggleAlerts('${uid}')">
         <div class="alert-toggle-left">
-          <span style="color:${topSeverity==='blocking'?'#FF8A80':topSeverity==='significant'?'#FFB74D':'#90CAF9'}">${severityLabel}</span>
-          <span class="alert-toggle-count ${topSeverity}">${alertsToShow.length} message${alertsToShow.length>1?'s':''}</span>
+          <span style="color:${topSev==='blocking'?'#FF8A80':topSev==='significant'?'#FFB74D':'#90CAF9'}">${topLabel}</span>
+          <span class="alert-toggle-count ${topSev}">${alertsToShow.length} message${alertsToShow.length>1?'s':''}</span>
         </div>
         <span class="alert-chevron" id="chev_${uid}">▼</span>
       </div>
-      ${previewTxt ? `<div class="alert-preview">${previewTxt}</div>` : ''}
-      <div class="alert-body" id="${uid}">
-        <div class="alert-body-inner">${cards}</div>
-      </div>
+      ${previewTxt?`<div class="alert-preview">${previewTxt}</div>`:''}
+      <div class="alert-body" id="${uid}"><div class="alert-body-inner">${cards}</div></div>
     </div>`;
   })() : '';
 
-  // Détermine l'état précis du train parmi les arrêts
-  // currentSegIdx = index du segment EN COURS (entre stop[i] et stop[i+1])
-  // atStationIdx  = index de la gare où le train est à l'arrêt (entre arr et dep)
   const currentSegIdx = pos?.segIdx ?? findCurrentSegment(stops, now);
   const atStationIdx  = findAtStation(stops, now);
-
-  // ── Calcul global de la progression pour la barre continue ──
-  // On calcule un "progressPct" global : 0% = départ, 100% = arrivée
-  // Chaque stop-tl-bar connaît son propre fill via data-attr injecté en inline style
-  const totalStops = stops.length;
+  const totalStops    = stops.length;
 
   document.getElementById('detBody').innerHTML = alertsHTML + (totalStops
-    ? `<div class="stops-title">Arrêts desservis (${totalStops})</div>
-       <div class="stops-container">`
+    ? `<div class="stops-title">Arrêts desservis (${totalStops})</div><div class="stops-container">`
       + stops.map((s, i) => {
           const skip  = s.scheduleRelationship === 'SKIPPED';
           const added = s.scheduleRelationship === 'ADDED';
-          const isFirst = i === 0;
-          const isLast  = i === totalStops - 1;
-
+          const isLast = i === totalStops - 1;
           const isAtStation = atStationIdx === i;
-          // Progression basée sur l'heure, pas sur l'index
-          // Un stop est "passé" si son heure de départ (ou d'arrivée) est dans le passé
-          const depS   = getStopTime(s, 'departure');
-          const arrS   = getStopTime(s, 'arrival');
-          const refTime = depS || arrS; // heure de référence de ce stop
+          const depS = getStopTime(s,'departure'), arrS = getStopTime(s,'arrival');
+          const refTime = depS || arrS;
           const isPassed   = !skip && refTime && refTime.getTime() < now && !isAtStation;
-          const isLastLeft = !skip && isPassed && i < totalStops - 1 && (() => {
-            // Est-ce le dernier stop passé avant le prochain stop futur ?
-            const nextS = stops[i + 1];
-            if (!nextS) return false;
-            const nextArr = getStopTime(nextS, 'arrival') || getStopTime(nextS, 'departure');
+          const isLastLeft = !skip && isPassed && i < totalStops-1 && (() => {
+            const nextS = stops[i+1]; if (!nextS) return false;
+            const nextArr = getStopTime(nextS,'arrival')||getStopTime(nextS,'departure');
             return nextArr && nextArr.getTime() > now;
           })();
-
-          const dotCls  = skip ? 'skip' : isAtStation ? 'current' : isPassed ? 'done' : 'next';
-          const nameCls = skip ? 'skip' : isAtStation ? 'current' : isPassed ? 'done' : '';
-
-          // Calcul du remplissage de la barre entre stop[i] et stop[i+1]
+          const dotCls  = skip?'skip':isAtStation?'current':isPassed?'done':'next';
+          const nameCls = skip?'skip':isAtStation?'current':isPassed?'done':'';
           let barFill = 0;
           if (!isLast) {
-            if (isPassed && !isLastLeft) {
-              barFill = 100;
-            } else if (isLastLeft) {
-              // Segment actif : % entre dep de ce stop et arr du suivant
-              const dep = getStopTime(s, 'departure') || getStopTime(s, 'arrival');
-              const arr = stops[i+1] ? (getStopTime(stops[i+1], 'arrival') || getStopTime(stops[i+1], 'departure')) : null;
-              if (dep && arr && arr > dep) {
-                barFill = Math.min(99, Math.max(1,
-                  Math.round((now - dep.getTime()) / (arr.getTime() - dep.getTime()) * 100)
-                ));
-              } else { barFill = 50; }
-            } else if (isAtStation) {
-              barFill = 0;
+            if (isPassed && !isLastLeft) barFill = 100;
+            else if (isLastLeft) {
+              const dep = getStopTime(s,'departure')||getStopTime(s,'arrival');
+              const arr = stops[i+1]?(getStopTime(stops[i+1],'arrival')||getStopTime(stops[i+1],'departure')):null;
+              barFill = (dep&&arr&&arr>dep) ? Math.min(99,Math.max(1,Math.round((now-dep.getTime())/(arr.getTime()-dep.getTime())*100))) : 50;
             }
           }
-
-          // Horaires
-          const arrTime  = getStopTime(s, 'arrival');
-          const depTime  = getStopTime(s, 'departure');
-          const arrDelay = s.arrival?.delay   ? Math.round(s.arrival.delay   / 60) : 0;
-          const depDelay = s.departure?.delay ? Math.round(s.departure.delay / 60) : 0;
-          const arrTheo  = arrTime && arrDelay > 0 ? new Date(arrTime.getTime() - s.arrival.delay   * 1000) : null;
-          const depTheo  = depTime && depDelay > 0 ? new Date(depTime.getTime() - s.departure.delay * 1000) : null;
-
-          // Dwell
-          let dwellHTML = '';
-          if (depTime && arrTime && depTime > arrTime) {
-            const dwell = Math.round((depTime - arrTime) / 60000);
-            if (dwell > 0) dwellHTML = `<span class="dwell${isAtStation?' current':''}">${dwell} min d'arrêt</span>`;
+          const arrTime=getStopTime(s,'arrival'), depTime=getStopTime(s,'departure');
+          const arrDelay=s.arrival?.delay?Math.round(s.arrival.delay/60):0;
+          const depDelay=s.departure?.delay?Math.round(s.departure.delay/60):0;
+          const arrTheo=arrTime&&arrDelay>0?new Date(arrTime.getTime()-s.arrival.delay*1000):null;
+          const depTheo=depTime&&depDelay>0?new Date(depTime.getTime()-s.departure.delay*1000):null;
+          let dwellHTML='';
+          if (depTime&&arrTime&&depTime>arrTime) { const dw=Math.round((depTime-arrTime)/60000); if(dw>0) dwellHTML=`<span class="dwell${isAtStation?' current':''}">${dw} min d'arrêt</span>`; }
+          let subHTML='';
+          if (skip) subHTML=`<span class="mini-skip">Arrêt supprimé</span>`;
+          else if (added) subHTML=`<span class="mini-add">+ Ajouté</span>`;
+          else {
+            if (arrTime) { if(arrTheo) subHTML+=`<span class="st struck">${fmtISO(arrTheo.toISOString())}</span>`; subHTML+=`<span class="st${arrDelay>0?' amended':' time'}">Arrivée: ${fmtISO(arrTime.toISOString())}</span>`; }
+            if (depTime) { if(depTheo) subHTML+=`<span class="st struck">${fmtISO(depTheo.toISOString())}</span>`; subHTML+=`<span class="st${depDelay>0?' amended':' time'}">Départ: ${fmtISO(depTime.toISOString())}</span>`; }
+            const maxDelay=Math.max(arrDelay,depDelay);
+            if (maxDelay>0) subHTML+=`<span class="st late">Retard: +${maxDelay}'</span>`;
+            if (dwellHTML) subHTML+=dwellHTML;
+            if (isAtStation) subHTML+=`<span class="current-badge">En gare</span>`;
           }
-
-          let subHTML = '';
-          if (skip) {
-            subHTML = `<span class="mini-skip">Arrêt supprimé</span>`;
-          } else if (added) {
-            subHTML = `<span class="mini-add">+ Ajouté</span>`;
-          } else {
-            if (arrTime) {
-              if (arrTheo) subHTML += `<span class="st struck">${fmtISO(arrTheo.toISOString())}</span>`;
-              subHTML += `<span class="st${arrDelay>0?' amended':' time'}">Arrivée: ${fmtISO(arrTime.toISOString())}</span>`;
-            }
-            if (depTime) {
-              if (depTheo) subHTML += `<span class="st struck">${fmtISO(depTheo.toISOString())}</span>`;
-              subHTML += `<span class="st${depDelay>0?' amended':' time'}">Départ: ${fmtISO(depTime.toISOString())}</span>`;
-            }
-            const maxDelay = Math.max(arrDelay, depDelay);
-            if (maxDelay > 0) subHTML += `<span class="st late">Retard: +${maxDelay}'</span>`;
-            if (dwellHTML)    subHTML += dwellHTML;
-            if (isAtStation)  subHTML += `<span class="current-badge">En gare</span>`;
-          }
-
           return `<div class="stop-row${isAtStation?' is-current':''}">
-            <div class="stop-tl">
-              <div class="stop-tl-bar">
-                <div class="stop-tl-bar-fill" style="height:${barFill}%"></div>
-              </div>
-              <div class="stop-dot ${dotCls}"></div>
-            </div>
-            <div class="stop-info">
-              <div class="stop-name ${nameCls}">${s.stopName || s.stopId || '?'}</div>
-              <div class="stop-sub">${subHTML}</div>
-            </div>
+            <div class="stop-tl"><div class="stop-tl-bar"><div class="stop-tl-bar-fill" style="height:${barFill}%"></div></div><div class="stop-dot ${dotCls}"></div></div>
+            <div class="stop-info"><div class="stop-name ${nameCls}">${s.stopName||s.stopId||'?'}</div><div class="stop-sub">${subHTML}</div></div>
           </div>`;
-        }).join('')
-      + `</div>`
+        }).join('') + `</div>`
     : `<div class="empty">Pas de détail d'arrêt disponible.</div>`);
 
-  // Scroll auto vers l'arrêt courant
   document.getElementById('detailPanel').classList.add('open');
   if (currentSegIdx > 0) {
     requestAnimationFrame(() => {
@@ -900,7 +1119,6 @@ function showDetail(t, pos) {
   }
 }
 
-// Trouve le segment en cours (train entre deux gares)
 function findCurrentSegment(stops, now) {
   for (let i = 0; i < stops.length - 1; i++) {
     const dep = getStopTime(stops[i], 'departure');
@@ -914,30 +1132,27 @@ function findCurrentSegment(stops, now) {
   return stops.length - 1;
 }
 
-// Trouve l'index de la gare où le train est actuellement à quai
-// (entre l'heure d'arrivée et l'heure de départ). Retourne -1 si en route.
 function findAtStation(stops, now) {
   for (let i = 0; i < stops.length; i++) {
     const arr = getStopTime(stops[i], 'arrival');
     const dep = getStopTime(stops[i], 'departure');
     if (arr && dep && now >= arr.getTime() && now <= dep.getTime()) return i;
-    // Gare sans heure d'arrivée (premier arrêt) : en gare si avant le départ
     if (!arr && dep && now <= dep.getTime() && i === 0) return i;
   }
-  return -1; // en route
+  return -1;
 }
 
 function closeDetail() {
   document.getElementById('detailPanel').classList.remove('open');
+  document.getElementById('detailOverlay').classList.remove('visible');
   clearRoutes();
   selId = null;
   document.querySelectorAll('.t-card.selected').forEach(c => c.classList.remove('selected'));
-  // Réaffiche tous les marqueurs
   renderMarkers(filtered());
 }
 
 // ══════════════════════════════════════════════════════
-// RECHERCHE
+// RECHERCHE desktop
 // ══════════════════════════════════════════════════════
 const si = document.getElementById('searchInput');
 const sd = document.getElementById('searchDd');
@@ -945,37 +1160,73 @@ si.addEventListener('input', e => {
   clearTimeout(searchTimer);
   const v = e.target.value.trim();
   if (!v) { sd.classList.remove('open'); return; }
-  searchTimer = setTimeout(() => doSearch(v), 300);
+  searchTimer = setTimeout(() => doSearch(v, 'desktop'), 300);
 });
 si.addEventListener('keydown', e => { if (e.key === 'Escape') sd.classList.remove('open'); });
 document.addEventListener('click', e => { if (!e.target.closest('.search-wrap')) sd.classList.remove('open'); });
 
-async function doSearch(q) {
+// Recherche mobile
+const msi = document.getElementById('mobSearchInput');
+msi.addEventListener('input', e => {
+  clearTimeout(mobSearchTimer);
+  const v = e.target.value.trim();
+  if (!v) { document.getElementById('mobSearchResults').innerHTML = `<div class="empty">Recherche un numéro de train ou une ville</div>`; return; }
+  mobSearchTimer = setTimeout(() => doSearch(v, 'mobile'), 300);
+});
+
+async function doSearch(q, target) {
   try {
     const r = await fetch(`${PROXY}/search?q=${encodeURIComponent(q)}`);
     const data = await r.json();
     const results = data.results || [];
-    if (!results.length) {
-      sd.innerHTML = `<div class="dd-item" style="color:var(--muted)">Aucun résultat pour « ${q} »</div>`;
+    if (target === 'desktop') {
+      if (!results.length) {
+        sd.innerHTML = `<div class="dd-item" style="color:var(--muted)">Aucun résultat pour « ${q} »</div>`;
+      } else {
+        sd.innerHTML = results.slice(0,8).map(t => {
+          const { delayColor, delayLabel } = statusInfo(t);
+          return `<div class="dd-item" onclick="pickResult('${t.id}')">
+            <span class="dd-tag tag-${t.type.toLowerCase()}">${t.type}</span>
+            <div class="dd-info">
+              <div class="dd-num">${t.type} ${t.num} <span style="color:${delayColor};font-size:11px">${delayLabel}</span></div>
+              <div class="dd-route">${t.from} → ${t.to}${t.fromTime?' · ↑ '+fmtISO(t.fromTime):''}</div>
+            </div>
+          </div>`;
+        }).join('');
+      }
+      sd.classList.add('open');
     } else {
-      sd.innerHTML = results.slice(0,8).map(t => {
-        const { delayColor, delayLabel } = statusInfo(t);
-        return `<div class="dd-item" onclick="pickResult('${t.id}')">
-          <span class="dd-tag tag-${t.type.toLowerCase()}">${t.type}</span>
-          <div class="dd-info">
-            <div class="dd-num">${t.type} ${t.num} <span style="color:${delayColor};font-size:11px">${delayLabel}</span></div>
-            <div class="dd-route">${t.from} → ${t.to}${t.fromTime ? ' · ↑ '+fmtISO(t.fromTime) : ''}</div>
-          </div>
-        </div>`;
-      }).join('');
+      // Mobile : résultats en liste dans le panel recherche
+      const el = document.getElementById('mobSearchResults');
+      if (!results.length) {
+        el.innerHTML = `<div class="empty">Aucun résultat pour « ${q} »</div>`;
+      } else {
+        el.innerHTML = results.slice(0,12).map(t => {
+          const { cls, delayLabel, delayColor } = statusInfo(t);
+          const dep = t.fromTime ? fmtISO(t.fromTime) : null;
+          const arr = t.toTime   ? fmtISO(t.toTime)   : null;
+          return `<div class="t-card ${cls}" onclick="pickResult('${t.id}')">
+            <div class="tc-top">
+              <span class="tc-num">${t.type}&nbsp;${t.num}</span>
+              <span class="tc-type tag-${t.type.toLowerCase()}">${t.type}</span>
+              <span class="tc-delay" style="color:${delayColor}">${delayLabel}</span>
+            </div>
+            <div class="tc-route"><strong>${t.from}</strong> → <strong>${t.to}</strong></div>
+            <div class="tc-times">
+              ${dep?`<span class="st">Départ:&nbsp;${dep}</span>`:''}
+              ${arr?`<span class="st">→ Arrivée:&nbsp;${arr}</span>`:''}
+            </div>
+          </div>`;
+        }).join('');
+      }
     }
-    sd.classList.add('open');
   } catch(e) { console.error(e); }
 }
 
 function pickResult(id) {
   sd.classList.remove('open');
   si.value = '';
+  msi.value = '';
   setFilter('all');
   selectTrain(id);
 }
@@ -1009,17 +1260,10 @@ function fmtISO(iso) {
   if (!iso) return '—';
   try { return new Date(iso).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' }); } catch { return iso; }
 }
-function hhmm() {
-  return new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
-}
+function hhmm() { return new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' }); }
 function setStatus(html) {
-  document.getElementById('statusBar').innerHTML =
-    `<div class="live-dot" style="animation-duration:3s"></div><span>${html}</span>`;
+  document.getElementById('statusBar').innerHTML = `<div class="live-dot" style="animation-duration:3s"></div><span>${html}</span>`;
 }
-
-// ══════════════════════════════════════════════════════
-// ACCORDÉON ALERTES
-// ══════════════════════════════════════════════════════
 function toggleAlerts(uid) {
   const body = document.getElementById(uid);
   const chev = document.getElementById('chev_' + uid);
