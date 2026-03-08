@@ -604,20 +604,33 @@ function selectTrain(id) {
 
   // Masque tous les marqueurs sauf le train sélectionné
   Object.entries(markers).forEach(([mid, m]) => {
-    if (mid === id) {
-      m.setZIndexOffset(1000);
-    } else {
-      map.removeLayer(m);
-    }
+    if (mid === id) m.setZIndexOffset(1000);
+    else { try { map.removeLayer(m); } catch(e){} }
   });
 
   // Tracé de route
   clearRoutes();
-  const { color } = mkColor(t);
+  const { color, glow } = mkColor(t);
   drawRoute(t, color);
 
-  // Centrage sur la position interpolée
+  // Position interpolée
   const pos = interpolatePosition(t);
+
+  // Si le train n'avait pas de marqueur (pas de coords au dernier render),
+  // on en crée un à la volée avec la position calculée maintenant
+  if (pos && !markers[id] && t.rtStatus !== 'NO_SERVICE') {
+    const icon = trainIcon(t, pos.bearing, color, glow);
+    const m = L.marker([pos.lat, pos.lon], { icon, zIndexOffset: 1000 }).addTo(map);
+    m.bindPopup(`<div style="font-family:'DM Sans',sans-serif;font-size:13px;min-width:150px">
+      <b>${t.type} ${t.num}</b><br>
+      <span style="color:#888;font-size:12px">${t.from} → ${t.to}</span><br>
+      <span style="color:${color}">${t.delay > 0 ? '+'+t.delay+' min' : "À l'heure"}</span>
+    </div>`, { closeButton:false });
+    m.on('click', e => { e.originalEvent?.stopPropagation(); selectTrain(t.id); });
+    markers[id] = m;
+  }
+
+  // Centrage
   if (map && pos) map.setView([pos.lat, pos.lon], 9, { animate:true });
   else if (map && t.lat && t.lon) map.setView([t.lat, t.lon], 8, { animate:true });
 
@@ -758,19 +771,32 @@ function showDetail(t, pos) {
           const isLast  = i === totalStops - 1;
 
           const isAtStation = atStationIdx === i;
-          const isLastLeft  = !skip && atStationIdx === -1 && i === currentSegIdx;
-          const isPassed    = !skip && i < currentSegIdx;
-          const dotCls  = skip ? 'skip' : isAtStation ? 'current' : (isPassed || isLastLeft) ? 'done' : 'next';
-          const nameCls = skip ? 'skip' : isAtStation ? 'current' : (isPassed || isLastLeft) ? 'done' : '';
+          // Progression basée sur l'heure, pas sur l'index
+          // Un stop est "passé" si son heure de départ (ou d'arrivée) est dans le passé
+          const depS   = getStopTime(s, 'departure');
+          const arrS   = getStopTime(s, 'arrival');
+          const refTime = depS || arrS; // heure de référence de ce stop
+          const isPassed   = !skip && refTime && refTime.getTime() < now && !isAtStation;
+          const isLastLeft = !skip && isPassed && i < totalStops - 1 && (() => {
+            // Est-ce le dernier stop passé avant le prochain stop futur ?
+            const nextS = stops[i + 1];
+            if (!nextS) return false;
+            const nextArr = getStopTime(nextS, 'arrival') || getStopTime(nextS, 'departure');
+            return nextArr && nextArr.getTime() > now;
+          })();
+
+          const dotCls  = skip ? 'skip' : isAtStation ? 'current' : isPassed ? 'done' : 'next';
+          const nameCls = skip ? 'skip' : isAtStation ? 'current' : isPassed ? 'done' : '';
 
           // Calcul du remplissage de la barre entre stop[i] et stop[i+1]
           let barFill = 0;
           if (!isLast) {
-            if (isPassed) {
+            if (isPassed && !isLastLeft) {
               barFill = 100;
             } else if (isLastLeft) {
-              const dep = getStopTime(s, 'departure');
-              const arr = stops[i+1] ? getStopTime(stops[i+1], 'arrival') : null;
+              // Segment actif : % entre dep de ce stop et arr du suivant
+              const dep = getStopTime(s, 'departure') || getStopTime(s, 'arrival');
+              const arr = stops[i+1] ? (getStopTime(stops[i+1], 'arrival') || getStopTime(stops[i+1], 'departure')) : null;
               if (dep && arr && arr > dep) {
                 barFill = Math.min(99, Math.max(1,
                   Math.round((now - dep.getTime()) / (arr.getTime() - dep.getTime()) * 100)
