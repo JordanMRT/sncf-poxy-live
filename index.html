@@ -431,10 +431,20 @@ async function loadTrains() {
 // ══════════════════════════════════════════════════════
 // RENDU
 // ══════════════════════════════════════════════════════
+// Filtre silencieux — n'affiche que les trains encore en circulation.
+// Un train est "en cours" si son heure d'arrivée à destination est dans le futur.
+// Si toTime est absent (données incomplètes), on l'affiche par sécurité.
+function isStillRunning(t) {
+  if (!t.toTime) return true;
+  try { return new Date(t.toTime).getTime() > Date.now(); }
+  catch { return true; }
+}
+
 function filtered() {
-  if (activeFilter === 'late') return allTrains.filter(t => t.delay > 0 || t.rtStatus === 'NO_SERVICE' || t.rtStatus === 'MODIFIED_SERVICE');
-  if (activeFilter !== 'all')  return allTrains.filter(t => t.type === activeFilter);
-  return allTrains;
+  const running = allTrains.filter(isStillRunning);
+  if (activeFilter === 'late') return running.filter(t => t.delay > 0 || t.rtStatus === 'NO_SERVICE' || t.rtStatus === 'MODIFIED_SERVICE');
+  if (activeFilter !== 'all')  return running.filter(t => t.type === activeFilter);
+  return running;
 }
 
 function render() {
