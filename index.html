@@ -101,17 +101,22 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 /* ── STOPS LIST ── */
 .stop-row{display:flex;gap:12px;padding:6px 18px;align-items:flex-start;}
 .stop-row.is-current{background:rgba(0,230,118,.04);}
-.stop-tl{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:14px;padding-top:4px;}
-.stop-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;transition:all .3s;}
-.stop-dot.done{background:var(--green);opacity:0.35;border:2px solid transparent;}
-.stop-dot.current{background:var(--green);box-shadow:0 0 0 3px rgba(0,230,118,.25),0 0 10px rgba(0,230,118,.4);width:12px;height:12px;}
-.stop-dot.next{background:var(--card);border:2px solid var(--muted);}
-.stop-dot.skip{background:#1a1a1a;border:2px solid #2a2a2a;}
-.stop-line{width:2px;flex:1;min-height:14px;margin-top:2px;position:relative;background:var(--border);border-radius:2px;overflow:hidden;}
-.stop-line-fill{position:absolute;top:0;left:0;width:100%;background:var(--green);border-radius:2px;transition:height 1s linear;}
-.stop-line.done .stop-line-fill{height:100%;background:rgba(107,107,122,.4);}
-.stop-line.ahead .stop-line-fill{height:0%;}
-.st.struck{text-decoration:line-through;opacity:.4;font-size:10px;}
+
+/* Timeline : barre continue avec dots positionnés dessus */
+.stop-tl{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:14px;padding-top:4px;position:relative;}
+
+/* Dot discret sur la barre — même taille partout sauf position actuelle */
+.stop-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;transition:all .25s;position:relative;z-index:1;}
+.stop-dot.done{background:var(--green);opacity:0.6;}
+.stop-dot.current{background:var(--green);box-shadow:0 0 0 3px rgba(0,230,118,.3),0 0 8px rgba(0,230,118,.5);width:10px;height:10px;}
+.stop-dot.next{background:var(--dark);border:1.5px solid rgba(255,255,255,.2);}
+.stop-dot.skip{background:var(--dark);border:1.5px solid #2a2a2a;opacity:.4;}
+
+/* Barre continue — fond gris, remplissage vert via inline style */
+.stop-line{width:2px;flex:1;min-height:16px;margin-top:0;position:relative;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden;}
+.stop-line-fill{position:absolute;top:0;left:0;width:100%;border-radius:2px;background:var(--green);}
+
+.st.struck{text-decoration:line-through;opacity:.38;font-size:10px;}
 .st.amended{color:var(--orange);font-weight:600;}
 .stop-info{flex:1;padding-bottom:2px;}
 .stop-name{font-size:13px;font-weight:500;margin-bottom:3px;}
@@ -138,8 +143,21 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 .alert-chevron.open{transform:rotate(180deg);}
 .alert-body{overflow:hidden;max-height:0;transition:max-height .3s ease;}
 .alert-body.open{max-height:600px;}
-.alert-body-inner{padding-top:8px;display:flex;flex-direction:column;gap:5px;}
+.alert-body-inner{padding-top:8px;display:flex;flex-direction:column;gap:6px;}
 .alert-preview{font-size:12px;color:var(--muted);padding:6px 12px 2px;line-height:1.4;font-style:italic;}
+/* Cards d'alerte avec fond coloré */
+.alert-card{padding:10px 12px;border-radius:7px;border:1px solid;border-left-width:3px;}
+.alert-card.blocking  {background:rgba(227,6,19,.1); border-color:rgba(227,6,19,.35);}
+.alert-card.significant{background:rgba(255,152,0,.1);border-color:rgba(255,152,0,.35);}
+.alert-card.info      {background:rgba(33,150,243,.08);border-color:rgba(33,150,243,.3);}
+.alert-cause{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;}
+.alert-card.blocking   .alert-cause{color:#FF8A80;}
+.alert-card.significant .alert-cause{color:#FFB74D;}
+.alert-card.info       .alert-cause{color:#90CAF9;}
+.alert-text{font-size:12px;line-height:1.5;}
+.alert-card.blocking   .alert-text{color:rgba(255,200,200,.8);}
+.alert-card.significant .alert-text{color:rgba(255,220,180,.8);}
+.alert-card.info       .alert-text{color:rgba(180,210,255,.8);}
 .current-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--green);letter-spacing:.3px;text-transform:uppercase;}
 .current-badge::before{content:'';display:inline-block;width:5px;height:5px;background:var(--green);border-radius:50%;animation:pulse 1.5s infinite;}
 
@@ -766,17 +784,18 @@ function showDetail(t, pos) {
             if (isAtStation)  subHTML += `<span class="current-badge">En gare</span>`;
           }
 
-          const lineColor = lineState === 'done'   ? 'var(--green)'
-                          : lineState === 'active' ? 'var(--green)' : 'transparent';
-          const lineBase  = lineState === 'done'   ? 'rgba(0,230,118,.15)' : 'var(--border)';
+          // La barre est toujours grise en fond, verte en remplissage.
+          // fillPct détermine combien est vert : 100% = passé, 1-99% = actif, 0% = futur.
+          const lineHTML = i < stops.length - 1
+            ? `<div class="stop-line">
+                <div class="stop-line-fill" style="height:${fillPct}%"></div>
+               </div>`
+            : '';
 
           return `<div class="stop-row${isAtStation ? ' is-current' : ''}">
             <div class="stop-tl">
               <div class="stop-dot ${dotCls}"></div>
-              ${i < stops.length - 1 ? `
-                <div class="stop-line" style="background:${lineBase}">
-                  <div class="stop-line-fill" style="height:${fillPct}%;background:${lineColor}"></div>
-                </div>` : ''}
+              ${lineHTML}
             </div>
             <div class="stop-info">
               <div class="stop-name ${nameCls}">${s.stopName || s.stopId || '?'}</div>
