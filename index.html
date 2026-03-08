@@ -194,7 +194,7 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 
 <header>
   <div class="logo">
-    <span class="logo-badge">SNCF</span>
+    <span class="logo-badge">🚅 SNCF</span>
     <span class="logo-title">LIVE</span>
     <div class="live-dot"></div>
   </div>
@@ -207,8 +207,8 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
     <button class="chip active" data-f="all"  onclick="setFilter('all')">Tous</button>
     <button class="chip"        data-f="TGV"  onclick="setFilter('TGV')">TGV</button>
     <button class="chip"        data-f="TER"  onclick="setFilter('TER')">TER</button>
-    <button class="chip"        data-f="IC"   onclick="setFilter('IC')">IC</button>
-    <button class="chip"        data-f="late" onclick="setFilter('late')">⚠ Perturbés</button>
+    <button class="chip"        data-f="IC"   onclick="setFilter('IC')">INTERCITÉS</button>
+    <button class="chip"        data-f="late" onclick="setFilter('late')">⚠️ Perturbés</button>
   </div>
 </header>
 
@@ -544,9 +544,9 @@ function renderCards(list) {
       </div>
       <div class="tc-route"><strong>${t.from}</strong> → <strong>${t.to}</strong></div>
       <div class="tc-times">
-        ${dep ? `<span class="st">↑&nbsp;${dep}</span>` : ''}
+        ${dep ? `<span class="st">Départ:&nbsp;${dep}</span>` : ''}
         ${depD > 0 ? `<span class="st late">+${depD}'</span>` : ''}
-        ${arr ? `<span class="st">arr.&nbsp;${arr}</span>` : ''}
+        ${arr ? `<span class="st">→ Arrivée:&nbsp;${arr}</span>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -590,7 +590,7 @@ function renderBanner() {
   const el = document.getElementById('banner');
   if (!cancel && !big) { el.classList.remove('show'); return; }
   el.className = `banner show ${cancel ? 'alert' : 'warn'}`;
-  el.innerHTML = [cancel ? `⛔ ${cancel} supprimé(s)` : '', big ? `⚠ ${big} retard(s) > 15 min` : ''].filter(Boolean).join(' · ');
+  el.innerHTML = [cancel ? `⛔ ${cancel} supprimé(s)` : '', big ? `⚠️ ${big} retard(s) > 15 min` : ''].filter(Boolean).join(' · ');
 }
 
 // ══════════════════════════════════════════════════════
@@ -653,12 +653,12 @@ function showDetail(t, pos) {
   const { delayLabel, delayColor } = statusInfo(t);
   document.getElementById('detNum').textContent = `${t.type} ${t.num}`;
   document.getElementById('detRoute').innerHTML = `<strong>${t.from}</strong> → <strong>${t.to}</strong>`;
-  const rtMap = { NO_DISRUPTION:'✓ Normal', SIGNIFICANT_DELAYS:'⚠ Retardé', MODIFIED_SERVICE:'🔵 Modifié', NO_SERVICE:'⛔ Supprimé' };
+  const rtMap = { NO_DISRUPTION:'✓ Normal', SIGNIFICANT_DELAYS:'⚠️ Retardé', MODIFIED_SERVICE:'🔵 Modifié', NO_SERVICE:'⛔ Supprimé' };
   document.getElementById('detMeta').innerHTML = `
     <span class="meta-pill">${t.type}</span>
     <span class="meta-pill" style="color:${delayColor}">${delayLabel}</span>
-    ${t.fromTime ? `<span class="meta-pill">↑ ${fmtISO(t.fromTime)}</span>` : ''}
-    ${t.toTime   ? `<span class="meta-pill">↓ ${fmtISO(t.toTime)}</span>`   : ''}
+    ${t.fromTime ? `<span class="meta-pill">Départ: ${fmtISO(t.fromTime)}</span>` : ''}
+    ${t.toTime   ? `<span class="meta-pill">Arrivée: ${fmtISO(t.toTime)}</span>`   : ''}
     <span class="meta-pill" style="font-size:10px">${rtMap[t.rtStatus]||''}</span>
   `;
 
@@ -851,7 +851,7 @@ function showDetail(t, pos) {
           let dwellHTML = '';
           if (depTime && arrTime && depTime > arrTime) {
             const dwell = Math.round((depTime - arrTime) / 60000);
-            if (dwell > 0) dwellHTML = `<span class="dwell${isAtStation?' current':''}">${dwell} min</span>`;
+            if (dwell > 0) dwellHTML = `<span class="dwell${isAtStation?' current':''}">${dwell} min d'arrêt</span>`;
           }
 
           let subHTML = '';
@@ -862,14 +862,14 @@ function showDetail(t, pos) {
           } else {
             if (arrTime) {
               if (arrTheo) subHTML += `<span class="st struck">${fmtISO(arrTheo.toISOString())}</span>`;
-              subHTML += `<span class="st${arrDelay>0?' amended':' time'}">↓ ${fmtISO(arrTime.toISOString())}</span>`;
+              subHTML += `<span class="st${arrDelay>0?' amended':' time'}">Arrivée: ${fmtISO(arrTime.toISOString())}</span>`;
             }
             if (depTime) {
               if (depTheo) subHTML += `<span class="st struck">${fmtISO(depTheo.toISOString())}</span>`;
-              subHTML += `<span class="st${depDelay>0?' amended':' time'}">↑ ${fmtISO(depTime.toISOString())}</span>`;
+              subHTML += `<span class="st${depDelay>0?' amended':' time'}">Départ: ${fmtISO(depTime.toISOString())}</span>`;
             }
             const maxDelay = Math.max(arrDelay, depDelay);
-            if (maxDelay > 0) subHTML += `<span class="st late">+${maxDelay}'</span>`;
+            if (maxDelay > 0) subHTML += `<span class="st late">Retard: +${maxDelay}'</span>`;
             if (dwellHTML)    subHTML += dwellHTML;
             if (isAtStation)  subHTML += `<span class="current-badge">En gare</span>`;
           }
