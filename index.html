@@ -127,18 +127,19 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 .mini-skip{font-size:9px;font-weight:700;text-transform:uppercase;padding:1px 5px;border-radius:2px;background:rgba(80,80,80,.2);color:#555;}
 .mini-add{font-size:9px;font-weight:700;text-transform:uppercase;padding:1px 5px;border-radius:2px;background:rgba(33,150,243,.15);color:var(--blue);}
 
-/* ── ALERTES DANS LE DÉTAIL ── */
+/* ── ALERTES ACCORDÉON ── */
 .alert-section{padding:10px 18px 4px;}
-.alert-section-title{font-family:'Bebas Neue',sans-serif;font-size:12px;letter-spacing:1.5px;color:var(--muted);margin-bottom:8px;}
-.alert-card{padding:10px 12px;border-radius:6px;margin-bottom:6px;border-left:3px solid;}
-.alert-card.blocking{background:rgba(227,6,19,.08);border-color:var(--red);}
-.alert-card.significant{background:rgba(255,152,0,.08);border-color:var(--orange);}
-.alert-card.info{background:rgba(33,150,243,.08);border-color:var(--blue);}
-.alert-cause{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;}
-.alert-card.blocking   .alert-cause{color:#FF8A80;}
-.alert-card.significant .alert-cause{color:#FFB74D;}
-.alert-card.info       .alert-cause{color:#90CAF9;}
-.alert-text{font-size:12px;color:var(--muted);line-height:1.5;}
+.alert-toggle{display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:8px 12px;border-radius:6px;background:var(--card);border:1px solid var(--border);margin-bottom:0;user-select:none;transition:background .15s;}
+.alert-toggle:hover{background:rgba(255,255,255,.04);}
+.alert-toggle-left{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;}
+.alert-toggle-count{font-family:'DM Mono',monospace;font-size:10px;background:rgba(255,152,0,.15);color:#FFB74D;border:1px solid rgba(255,152,0,.3);border-radius:3px;padding:1px 6px;}
+.alert-toggle-count.blocking{background:rgba(227,6,19,.15);color:#FF8A80;border-color:rgba(227,6,19,.3);}
+.alert-chevron{color:var(--muted);font-size:11px;transition:transform .2s;}
+.alert-chevron.open{transform:rotate(180deg);}
+.alert-body{overflow:hidden;max-height:0;transition:max-height .3s ease;}
+.alert-body.open{max-height:600px;}
+.alert-body-inner{padding-top:8px;display:flex;flex-direction:column;gap:5px;}
+.alert-preview{font-size:12px;color:var(--muted);padding:6px 12px 2px;line-height:1.4;font-style:italic;}
 .current-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--green);letter-spacing:.3px;text-transform:uppercase;}
 .current-badge::before{content:'';display:inline-block;width:5px;height:5px;background:var(--green);border-radius:50%;animation:pulse 1.5s infinite;}
 
@@ -639,22 +640,42 @@ function showDetail(t, pos) {
     DETOUR:'Déviation', ADDITIONAL_SERVICE:'Service supplémentaire'
   };
 
-  const alertsHTML = alertsToShow.length
-    ? `<div class="alert-section">
-        <div class="alert-section-title">⚠ Perturbations</div>
-        ${alertsToShow.map(a => {
-          const cause  = causeLabels[a.cause]  ?? null;
-          const effect = effectLabels[a.effect] ?? null;
-          const label  = [cause, effect].filter(Boolean).join(' · ');
-          const title  = a.headerText || label || 'Perturbation';
-          const desc   = a.description && a.description !== a.headerText ? a.description : null;
-          return `<div class="alert-card ${a.severity || 'info'}">
-            <div class="alert-cause">${label || 'Perturbation'}</div>
-            <div class="alert-text">${title}${desc ? '<br><span style="opacity:.75">'+desc+'</span>' : ''}</div>
-          </div>`;
-        }).join('')}
-      </div>`
-    : '';
+  const alertsHTML = alertsToShow.length ? (() => {
+    const topSeverity = alertsToShow.some(a => a.severity === 'blocking') ? 'blocking'
+                      : alertsToShow.some(a => a.severity === 'significant') ? 'significant' : 'info';
+    const severityLabel = { blocking:'⛔ Suppression', significant:'⚠ Perturbation', info:'ℹ Info trafic' }[topSeverity];
+    // Aperçu : titre du premier message le plus sévère
+    const topAlert   = alertsToShow.find(a => a.severity === topSeverity) || alertsToShow[0];
+    const preview    = topAlert.headerText || topAlert.description || '';
+    const previewTxt = preview.length > 80 ? preview.slice(0, 80) + '…' : preview;
+    const uid = 'al_' + Math.random().toString(36).slice(2,7);
+
+    const cards = alertsToShow.map(a => {
+      const cause  = causeLabels[a.cause]  ?? null;
+      const effect = effectLabels[a.effect] ?? null;
+      const label  = [cause, effect].filter(Boolean).join(' · ');
+      const title  = a.headerText || label || 'Perturbation';
+      const desc   = a.description && a.description !== a.headerText ? a.description : null;
+      return `<div class="alert-card ${a.severity || 'info'}">
+        <div class="alert-cause">${label || 'Perturbation'}</div>
+        <div class="alert-text">${title}${desc ? '<br><span style="opacity:.7;font-size:11px">'+desc+'</span>' : ''}</div>
+      </div>`;
+    }).join('');
+
+    return `<div class="alert-section">
+      <div class="alert-toggle" onclick="toggleAlerts('${uid}')">
+        <div class="alert-toggle-left">
+          <span style="color:${topSeverity==='blocking'?'#FF8A80':topSeverity==='significant'?'#FFB74D':'#90CAF9'}">${severityLabel}</span>
+          <span class="alert-toggle-count ${topSeverity}">${alertsToShow.length} message${alertsToShow.length>1?'s':''}</span>
+        </div>
+        <span class="alert-chevron" id="chev_${uid}">▼</span>
+      </div>
+      ${previewTxt ? `<div class="alert-preview">${previewTxt}</div>` : ''}
+      <div class="alert-body" id="${uid}">
+        <div class="alert-body-inner">${cards}</div>
+      </div>
+    </div>`;
+  })() : '';
 
   // Détermine l'état précis du train parmi les arrêts
   // currentSegIdx = index du segment EN COURS (entre stop[i] et stop[i+1])
@@ -668,33 +689,40 @@ function showDetail(t, pos) {
           const skip  = s.scheduleRelationship === 'SKIPPED';
           const added = s.scheduleRelationship === 'ADDED';
 
-          // État précis de cet arrêt
-          const isAtStation = atStationIdx === i;                    // train à quai ici
-          const isNext      = !skip && i === currentSegIdx + 1 && atStationIdx === -1; // prochaine gare
-          const isPassed    = !skip && (i < currentSegIdx || (i <= currentSegIdx && atStationIdx === -1));
-          const isEnRoute   = !skip && i === currentSegIdx && atStationIdx === -1; // gare qu'on vient de quitter
+          // ── État précis de cet arrêt ──
+          // atStationIdx >= 0  → train à quai dans une gare précise
+          // atStationIdx === -1 → train en route entre currentSegIdx et currentSegIdx+1
 
-          const dotCls  = skip ? 'skip' : isAtStation ? 'current' : isPassed || isEnRoute ? 'done' : 'next';
-          const nameCls = skip ? 'skip' : isAtStation ? 'current' : isPassed || isEnRoute ? 'done' : '';
+          const isAtStation = atStationIdx === i;
+          // "En route" : on vient de quitter stop[currentSegIdx], on va vers stop[currentSegIdx+1]
+          // stop[currentSegIdx] est donc "dernier arrêt quitté" → done
+          // stop[currentSegIdx+1] est "prochain arrêt" → next
+          const isLastLeft  = !skip && atStationIdx === -1 && i === currentSegIdx;
+          const isPassed    = !skip && (i < currentSegIdx);  // strictement avant le segment en cours
+          const dotCls  = skip ? 'skip' : isAtStation ? 'current' : (isPassed || isLastLeft) ? 'done' : 'next';
+          const nameCls = skip ? 'skip' : isAtStation ? 'current' : (isPassed || isLastLeft) ? 'done' : '';
 
-          // Barre de progression entre cet arrêt et le suivant
+          // ── Barre de progression ──
           let fillPct = 0;
-          if (isPassed || isEnRoute) fillPct = 100;
-          else if (i === currentSegIdx && atStationIdx === -1) {
-            // En route entre stop[i] et stop[i+1] — calcule le % parcouru
+          let lineState = 'ahead';
+          if (isPassed) {
+            fillPct = 100; lineState = 'done';
+          } else if (isLastLeft && i < stops.length - 1) {
+            // Segment actif : calcule % parcouru entre dep de stop[i] et arr de stop[i+1]
             const dep = getStopTime(s, 'departure');
             const arr = stops[i+1] ? getStopTime(stops[i+1], 'arrival') : null;
-            if (dep && arr) {
-              const total = arr.getTime() - dep.getTime();
+            if (dep && arr && arr > dep) {
+              const total   = arr.getTime() - dep.getTime();
               const elapsed = now - dep.getTime();
-              fillPct = Math.min(100, Math.max(0, Math.round(elapsed / total * 100)));
+              fillPct = Math.min(99, Math.max(1, Math.round(elapsed / total * 100)));
+            } else {
+              fillPct = 50; // fallback si pas d'heure
             }
+            lineState = 'active';
+          } else if (isAtStation && i < stops.length - 1) {
+            // Train en gare : barre vide vers la prochaine gare
+            fillPct = 0; lineState = 'ahead';
           }
-          const lineHTML = i < stops.length - 1
-            ? `<div class="stop-line ${isPassed || isEnRoute ? 'done' : 'ahead'}">
-                <div class="stop-line-fill" style="height:${fillPct}%"></div>
-               </div>`
-            : '';
 
           // Horaires : heure théorique + heure réelle si retard
           const arrTime = getStopTime(s, 'arrival');
@@ -738,10 +766,17 @@ function showDetail(t, pos) {
             if (isAtStation)  subHTML += `<span class="current-badge">En gare</span>`;
           }
 
+          const lineColor = lineState === 'done'   ? 'rgba(107,107,122,.5)'
+                          : lineState === 'active' ? 'var(--green)' : 'transparent';
+          const lineBase  = lineState === 'done'   ? 'rgba(107,107,122,.25)' : 'var(--border)';
+
           return `<div class="stop-row${isAtStation ? ' is-current' : ''}">
             <div class="stop-tl">
               <div class="stop-dot ${dotCls}"></div>
-              ${lineHTML}
+              ${i < stops.length - 1 ? `
+                <div class="stop-line" style="background:${lineBase}">
+                  <div class="stop-line-fill" style="height:${fillPct}%;background:${lineColor}"></div>
+                </div>` : ''}
             </div>
             <div class="stop-info">
               <div class="stop-name ${nameCls}">${s.stopName || s.stopId || '?'}</div>
@@ -876,6 +911,17 @@ function hhmm() {
 function setStatus(html) {
   document.getElementById('statusBar').innerHTML =
     `<div class="live-dot" style="animation-duration:3s"></div><span>${html}</span>`;
+}
+
+// ══════════════════════════════════════════════════════
+// ACCORDÉON ALERTES
+// ══════════════════════════════════════════════════════
+function toggleAlerts(uid) {
+  const body = document.getElementById(uid);
+  const chev = document.getElementById('chev_' + uid);
+  if (!body) return;
+  const isOpen = body.classList.toggle('open');
+  if (chev) chev.classList.toggle('open', isOpen);
 }
 
 // ══════════════════════════════════════════════════════
