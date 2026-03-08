@@ -347,10 +347,7 @@ function trainIcon(train, bearing, color, glow) {
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">
     <g transform="rotate(${bearing}, 22, 22)">
-      <ellipse cx="22" cy="22" rx="17" ry="17" fill="${glow}"/>
-      <path d="${shape}" fill="${color}" opacity="0.95"/>
-      <path d="M18,16 L26,16 L26,28 L18,28 Z" fill="rgba(255,255,255,0.08)" rx="2"/>
-      <line x1="22" y1="14" x2="22" y2="36" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+      <path d="${shape}" fill="${color}" opacity="0.95" stroke="rgba(255,255,255,0.55)" stroke-width="1"/>
     </g>
     <text x="22" y="25" text-anchor="middle"
           font-family="DM Mono,monospace" font-size="7" font-weight="700"
@@ -527,6 +524,15 @@ function selectTrain(id) {
   const t = allTrains.find(x => x.id === id);
   if (!t) return;
 
+  // Masque tous les marqueurs sauf le train sélectionné
+  Object.entries(markers).forEach(([mid, m]) => {
+    if (mid === id) {
+      m.setZIndexOffset(1000);
+    } else {
+      map.removeLayer(m);
+    }
+  });
+
   // Tracé de route
   clearRoutes();
   const { color } = mkColor(t);
@@ -560,35 +566,67 @@ function showDetail(t, pos) {
   const now    = Date.now();
 
   // ── Alertes liées à ce train ──
-  const trainAlerts = allAlerts.filter(a =>
-    a.affected?.some(e =>
-      (e.tripId && t.tripId && e.tripId === t.tripId) ||
-      (e.routeId && t.routeId && e.routeId === t.routeId)
-    )
-  );
+  // Le matching est robuste : on compare les IDs partiels car SNCF
+  // utilise des formats différents dans trip_updates vs service_alerts
+  const trainAlerts = allAlerts.filter(a => {
+    if (!a.affected?.length) return false;
+    return a.affected.some(e => {
+      if (e.tripId && t.tripId) {
+        // Comparaison partielle — ex: "OCESN8504F..." contient "8504"
+        const short = t.num?.toString();
+        if (short && e.tripId.includes(short)) return true;
+        if (t.tripId.includes(e.tripId) || e.tripId.includes(t.tripId)) return true;
+      }
+      if (e.routeId && t.routeId) {
+        if (t.routeId === e.routeId) return true;
+        if (t.routeId.includes(e.routeId) || e.routeId.includes(t.routeId)) return true;
+      }
+      return false;
+    });
+  });
 
-  const alertsHTML = trainAlerts.length
+  // Si pas d'alerte matchée mais train retardé/supprimé → alerte synthétique
+  const syntheticAlerts = [];
+  if (!trainAlerts.length && t.rtStatus !== 'NO_DISRUPTION') {
+    if (t.rtStatus === 'NO_SERVICE') {
+      syntheticAlerts.push({ severity:'blocking', cause:'OTHER_CAUSE', effect:'NO_SERVICE',
+        headerText:'Train supprimé', description:'Ce train est supprimé aujourd\'hui.' });
+    } else if (t.rtStatus === 'SIGNIFICANT_DELAYS') {
+      syntheticAlerts.push({ severity:'significant', cause:'UNKNOWN_CAUSE', effect:'SIGNIFICANT_DELAYS',
+        headerText:`Retard de ${t.delay} minute${t.delay > 1 ? 's' : ''}`,
+        description:'Des informations détaillées ne sont pas disponibles pour le moment.' });
+    } else if (t.rtStatus === 'MODIFIED_SERVICE') {
+      syntheticAlerts.push({ severity:'info', cause:'OTHER_CAUSE', effect:'MODIFIED_SERVICE',
+        headerText:'Service modifié', description:'Certains arrêts ont été modifiés sur ce trajet.' });
+    }
+  }
+
+  const alertsToShow = [...trainAlerts, ...syntheticAlerts];
+
+  const causeLabels = {
+    STRIKE:'Grève', TECHNICAL_PROBLEM:'Problème technique', ACCIDENT:'Accident',
+    WEATHER:'Conditions météo', MAINTENANCE:'Travaux', CONSTRUCTION:'Travaux',
+    POLICE_ACTIVITY:"Intervention des forces de l'ordre", MEDICAL_EMERGENCY:'Urgence médicale',
+    DEMONSTRATION:'Manifestation', OTHER_CAUSE:'Autre cause', UNKNOWN_CAUSE:null
+  };
+  const effectLabels = {
+    NO_SERVICE:'Service supprimé', SIGNIFICANT_DELAYS:'Retards importants',
+    REDUCED_SERVICE:'Service réduit', MODIFIED_SERVICE:'Service modifié',
+    DETOUR:'Déviation', ADDITIONAL_SERVICE:'Service supplémentaire'
+  };
+
+  const alertsHTML = alertsToShow.length
     ? `<div class="alert-section">
         <div class="alert-section-title">⚠ Perturbations</div>
-        ${trainAlerts.map(a => {
-          const causeLabels = {
-            STRIKE:'Grève', TECHNICAL_PROBLEM:'Problème technique', ACCIDENT:'Accident',
-            WEATHER:'Conditions météo', MAINTENANCE:'Travaux', CONSTRUCTION:'Travaux',
-            POLICE_ACTIVITY:'Intervention forces de l\'ordre', MEDICAL_EMERGENCY:'Urgence médicale',
-            DEMONSTRATION:'Manifestation', OTHER_CAUSE:'Autre cause', UNKNOWN_CAUSE:'Cause inconnue'
-          };
-          const effectLabels = {
-            NO_SERVICE:'Service supprimé', SIGNIFICANT_DELAYS:'Retards importants',
-            REDUCED_SERVICE:'Service réduit', MODIFIED_SERVICE:'Service modifié',
-            DETOUR:'Déviation', ADDITIONAL_SERVICE:'Service supplémentaire'
-          };
-          const cause  = causeLabels[a.cause]  || a.cause  || '';
-          const effect = effectLabels[a.effect] || a.effect || '';
+        ${alertsToShow.map(a => {
+          const cause  = causeLabels[a.cause]  ?? null;
+          const effect = effectLabels[a.effect] ?? null;
           const label  = [cause, effect].filter(Boolean).join(' · ');
-          const msg    = a.headerText || a.description || '';
+          const title  = a.headerText || label || 'Perturbation';
+          const desc   = a.description && a.description !== a.headerText ? a.description : null;
           return `<div class="alert-card ${a.severity || 'info'}">
-            <div class="alert-cause">${label}</div>
-            ${msg ? `<div class="alert-text">${msg}</div>` : ''}
+            <div class="alert-cause">${label || 'Perturbation'}</div>
+            <div class="alert-text">${title}${desc ? '<br><span style="opacity:.75">'+desc+'</span>' : ''}</div>
           </div>`;
         }).join('')}
       </div>`
@@ -685,6 +723,8 @@ function closeDetail() {
   clearRoutes();
   selId = null;
   document.querySelectorAll('.t-card.selected').forEach(c => c.classList.remove('selected'));
+  // Réaffiche tous les marqueurs
+  renderMarkers(filtered());
 }
 
 // ══════════════════════════════════════════════════════
