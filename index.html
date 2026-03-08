@@ -107,10 +107,12 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 .stop-dot.current{background:var(--green);box-shadow:0 0 0 3px rgba(0,230,118,.25),0 0 10px rgba(0,230,118,.4);width:12px;height:12px;}
 .stop-dot.next{background:var(--card);border:2px solid var(--muted);}
 .stop-dot.skip{background:#1a1a1a;border:2px solid #2a2a2a;}
-.stop-line{width:1px;flex:1;min-height:14px;margin-top:2px;transition:background .3s;}
-.stop-line.done{background:rgba(107,107,122,.3);}
-.stop-line.ahead{background:var(--border);}
-.stop-line.current{background:linear-gradient(to bottom, var(--green), var(--border));}
+.stop-line{width:2px;flex:1;min-height:14px;margin-top:2px;position:relative;background:var(--border);border-radius:2px;overflow:hidden;}
+.stop-line-fill{position:absolute;top:0;left:0;width:100%;background:var(--green);border-radius:2px;transition:height 1s linear;}
+.stop-line.done .stop-line-fill{height:100%;background:rgba(107,107,122,.4);}
+.stop-line.ahead .stop-line-fill{height:0%;}
+.st.struck{text-decoration:line-through;opacity:.4;font-size:10px;}
+.st.amended{color:var(--orange);font-weight:600;}
 .stop-info{flex:1;padding-bottom:2px;}
 .stop-name{font-size:13px;font-weight:500;margin-bottom:3px;}
 .stop-name.done{color:var(--muted);font-weight:400;}
@@ -431,17 +433,29 @@ async function loadTrains() {
 // ══════════════════════════════════════════════════════
 // RENDU
 // ══════════════════════════════════════════════════════
-// Filtre silencieux — n'affiche que les trains encore en circulation.
-// Un train est "en cours" si son heure d'arrivée à destination est dans le futur.
-// Si toTime est absent (données incomplètes), on l'affiche par sécurité.
+// Filtre silencieux — trains encore en circulation
 function isStillRunning(t) {
   if (!t.toTime) return true;
   try { return new Date(t.toTime).getTime() > Date.now(); }
   catch { return true; }
 }
 
+// Filtre silencieux — trains circulant en France métropolitaine
+// On vérifie que les coordonnées du 1er et dernier arrêt avec coords
+// sont dans le rectangle France (lat 41.3–51.1 / lon -5.2–9.6)
+function isInFrance(t) {
+  const FR = { latMin:41.3, latMax:51.1, lonMin:-5.2, lonMax:9.6 };
+  const inBox = (lat, lon) =>
+    lat >= FR.latMin && lat <= FR.latMax && lon >= FR.lonMin && lon <= FR.lonMax;
+  const stops = (t.stops || []).filter(s => s.lat && s.lon);
+  if (!stops.length) return true; // pas de coords → on garde par sécurité
+  const first = stops[0];
+  const last  = stops[stops.length - 1];
+  return inBox(first.lat, first.lon) && inBox(last.lat, last.lon);
+}
+
 function filtered() {
-  const running = allTrains.filter(isStillRunning);
+  const running = allTrains.filter(t => isStillRunning(t) && isInFrance(t));
   if (activeFilter === 'late') return running.filter(t => t.delay > 0 || t.rtStatus === 'NO_SERVICE' || t.rtStatus === 'MODIFIED_SERVICE');
   if (activeFilter !== 'all')  return running.filter(t => t.type === activeFilter);
   return running;
@@ -642,8 +656,11 @@ function showDetail(t, pos) {
       </div>`
     : '';
 
-  // Détermine l'index de l'arrêt courant (entre lequel le train circule)
+  // Détermine l'état précis du train parmi les arrêts
+  // currentSegIdx = index du segment EN COURS (entre stop[i] et stop[i+1])
+  // atStationIdx  = index de la gare où le train est à l'arrêt (entre arr et dep)
   const currentSegIdx = pos?.segIdx ?? findCurrentSegment(stops, now);
+  const atStationIdx  = findAtStation(stops, now);
 
   document.getElementById('detBody').innerHTML = alertsHTML + (stops.length
     ? `<div class="stops-title">Arrêts desservis (${stops.length})</div>`
@@ -651,49 +668,80 @@ function showDetail(t, pos) {
           const skip  = s.scheduleRelationship === 'SKIPPED';
           const added = s.scheduleRelationship === 'ADDED';
 
-          // État dans la progression
-          const isCurrent = !skip && i === currentSegIdx;
-          const isPassed  = !skip && i < currentSegIdx;
+          // État précis de cet arrêt
+          const isAtStation = atStationIdx === i;                    // train à quai ici
+          const isNext      = !skip && i === currentSegIdx + 1 && atStationIdx === -1; // prochaine gare
+          const isPassed    = !skip && (i < currentSegIdx || (i <= currentSegIdx && atStationIdx === -1));
+          const isEnRoute   = !skip && i === currentSegIdx && atStationIdx === -1; // gare qu'on vient de quitter
 
-          const dotCls  = skip ? 'skip' : isCurrent ? 'current' : isPassed ? 'done' : 'next';
-          const lineCls = i === currentSegIdx ? 'current' : isPassed ? 'done' : 'ahead';
-          const nameCls = skip ? 'skip' : isCurrent ? 'current' : isPassed ? 'done' : '';
+          const dotCls  = skip ? 'skip' : isAtStation ? 'current' : isPassed || isEnRoute ? 'done' : 'next';
+          const nameCls = skip ? 'skip' : isAtStation ? 'current' : isPassed || isEnRoute ? 'done' : '';
 
-          // Durée d'arrêt (dwell time)
-          const depTime = getStopTime(s, 'departure');
+          // Barre de progression entre cet arrêt et le suivant
+          let fillPct = 0;
+          if (isPassed || isEnRoute) fillPct = 100;
+          else if (i === currentSegIdx && atStationIdx === -1) {
+            // En route entre stop[i] et stop[i+1] — calcule le % parcouru
+            const dep = getStopTime(s, 'departure');
+            const arr = stops[i+1] ? getStopTime(stops[i+1], 'arrival') : null;
+            if (dep && arr) {
+              const total = arr.getTime() - dep.getTime();
+              const elapsed = now - dep.getTime();
+              fillPct = Math.min(100, Math.max(0, Math.round(elapsed / total * 100)));
+            }
+          }
+          const lineHTML = i < stops.length - 1
+            ? `<div class="stop-line ${isPassed || isEnRoute ? 'done' : 'ahead'}">
+                <div class="stop-line-fill" style="height:${fillPct}%"></div>
+               </div>`
+            : '';
+
+          // Horaires : heure théorique + heure réelle si retard
           const arrTime = getStopTime(s, 'arrival');
+          const depTime = getStopTime(s, 'departure');
+          const arrDelay = s.arrival?.delay  ? Math.round(s.arrival.delay  / 60) : 0;
+          const depDelay = s.departure?.delay ? Math.round(s.departure.delay / 60) : 0;
+
+          // Heure théorique = heure réelle - délai
+          const arrTheo = arrTime && arrDelay > 0
+            ? new Date(arrTime.getTime() - s.arrival.delay * 1000) : null;
+          const depTheo = depTime && depDelay > 0
+            ? new Date(depTime.getTime() - s.departure.delay * 1000) : null;
+
+          // Durée d'arrêt (dwell)
           let dwellHTML = '';
           if (depTime && arrTime && depTime > arrTime) {
             const dwell = Math.round((depTime - arrTime) / 60000);
-            if (dwell > 0) {
-              dwellHTML = `<span class="dwell${isCurrent ? ' current' : ''}">${dwell} min</span>`;
-            }
+            if (dwell > 0) dwellHTML = `<span class="dwell${isAtStation ? ' current' : ''}">${dwell} min</span>`;
           }
-
-          // Retard
-          const delay = Math.max(
-            s.arrival?.delay  ? Math.round(s.arrival.delay  / 60) : 0,
-            s.departure?.delay ? Math.round(s.departure.delay / 60) : 0
-          );
-
-          // Heure de passage (arrivée ou départ, selon ce qui existe)
-          const passTime = arrTime || depTime;
-          const timeStr  = passTime ? fmtISO(passTime.toISOString()) : null;
 
           let subHTML = '';
-          if (skip)        subHTML = `<span class="mini-skip">Arrêt supprimé</span>`;
-          else if (added)  subHTML = `<span class="mini-add">+ Ajouté</span>`;
-          else {
-            if (timeStr)    subHTML += `<span class="st time">${timeStr}</span>`;
-            if (delay > 0)  subHTML += `<span class="st late">+${delay}'</span>`;
-            if (dwellHTML)  subHTML += dwellHTML;
-            if (isCurrent)  subHTML += `<span class="current-badge">En gare</span>`;
+          if (skip) {
+            subHTML = `<span class="mini-skip">Arrêt supprimé</span>`;
+          } else if (added) {
+            subHTML = `<span class="mini-add">+ Ajouté</span>`;
+          } else {
+            // Arrivée
+            if (arrTime) {
+              if (arrTheo) subHTML += `<span class="st struck">${fmtISO(arrTheo.toISOString())}</span>`;
+              subHTML += `<span class="st${arrDelay > 0 ? ' amended' : ' time'}">↓ ${fmtISO(arrTime.toISOString())}</span>`;
+            }
+            // Départ
+            if (depTime) {
+              if (depTheo) subHTML += `<span class="st struck">${fmtISO(depTheo.toISOString())}</span>`;
+              subHTML += `<span class="st${depDelay > 0 ? ' amended' : ' time'}">↑ ${fmtISO(depTime.toISOString())}</span>`;
+            }
+            // Retard max
+            const maxDelay = Math.max(arrDelay, depDelay);
+            if (maxDelay > 0) subHTML += `<span class="st late">+${maxDelay}'</span>`;
+            if (dwellHTML)    subHTML += dwellHTML;
+            if (isAtStation)  subHTML += `<span class="current-badge">En gare</span>`;
           }
 
-          return `<div class="stop-row${isCurrent ? ' is-current' : ''}">
+          return `<div class="stop-row${isAtStation ? ' is-current' : ''}">
             <div class="stop-tl">
               <div class="stop-dot ${dotCls}"></div>
-              ${i < stops.length - 1 ? `<div class="stop-line ${lineCls}"></div>` : ''}
+              ${lineHTML}
             </div>
             <div class="stop-info">
               <div class="stop-name ${nameCls}">${s.stopName || s.stopId || '?'}</div>
@@ -713,19 +761,31 @@ function showDetail(t, pos) {
   }
 }
 
-// Trouve le segment courant en fonction de l'heure actuelle
+// Trouve le segment en cours (train entre deux gares)
 function findCurrentSegment(stops, now) {
   for (let i = 0; i < stops.length - 1; i++) {
     const dep = getStopTime(stops[i], 'departure');
     const arr = getStopTime(stops[i+1], 'arrival');
     if (dep && arr && now >= dep.getTime() && now <= arr.getTime()) return i;
   }
-  // Cherche le premier arrêt futur
   for (let i = 0; i < stops.length; i++) {
     const t = getStopTime(stops[i], 'arrival') || getStopTime(stops[i], 'departure');
     if (t && t.getTime() > now) return Math.max(0, i - 1);
   }
   return stops.length - 1;
+}
+
+// Trouve l'index de la gare où le train est actuellement à quai
+// (entre l'heure d'arrivée et l'heure de départ). Retourne -1 si en route.
+function findAtStation(stops, now) {
+  for (let i = 0; i < stops.length; i++) {
+    const arr = getStopTime(stops[i], 'arrival');
+    const dep = getStopTime(stops[i], 'departure');
+    if (arr && dep && now >= arr.getTime() && now <= dep.getTime()) return i;
+    // Gare sans heure d'arrivée (premier arrêt) : en gare si avant le départ
+    if (!arr && dep && now <= dep.getTime() && i === 0) return i;
+  }
+  return -1; // en route
 }
 
 function closeDetail() {
