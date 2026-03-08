@@ -603,10 +603,17 @@ function selectTrain(id) {
   if (!t) return;
 
   // Masque tous les marqueurs sauf le train sélectionné
+  // On supprime aussi du dictionnaire pour permettre la recréation à la volée
   Object.entries(markers).forEach(([mid, m]) => {
-    if (mid === id) m.setZIndexOffset(1000);
-    else { try { map.removeLayer(m); } catch(e){} }
+    try { map.removeLayer(m); } catch(e){}
   });
+  // Remet uniquement le marqueur sélectionné s'il existait
+  const existingMarker = markers[id];
+  markers = {};
+  if (existingMarker) {
+    try { existingMarker.addTo(map); existingMarker.setZIndexOffset(1000); } catch(e){}
+    markers[id] = existingMarker;
+  }
 
   // Tracé de route
   clearRoutes();
@@ -707,29 +714,33 @@ function showDetail(t, pos) {
   };
 
   const alertsHTML = alertsToShow.length ? (() => {
-    const topSeverity = alertsToShow.some(a => a.severity === 'blocking') ? 'blocking'
-                      : alertsToShow.some(a => a.severity === 'significant') ? 'significant' : 'info';
+    // Calcule la sévérité effective de chaque alerte (déduite si absente)
+    const withSev = alertsToShow.map(a => {
+      const effectiveSev = a.severity || (
+        a.effect === 'NO_SERVICE' ? 'blocking' :
+        (a.effect === 'SIGNIFICANT_DELAYS' || a.effect === 'REDUCED_SERVICE' ||
+         a.cause === 'STRIKE' || a.cause === 'ACCIDENT' ||
+         a.cause === 'TECHNICAL_PROBLEM' || a.cause === 'DEMONSTRATION' ||
+         (a.headerText || a.description || '').toLowerCase().includes('retard')) ? 'significant' : 'info'
+      );
+      return { ...a, effectiveSev };
+    });
+
+    const topSeverity = withSev.some(a => a.effectiveSev === 'blocking') ? 'blocking'
+                      : withSev.some(a => a.effectiveSev === 'significant') ? 'significant' : 'info';
     const severityLabel = { blocking:'⛔ Suppression', significant:'⚠ Perturbation', info:'ℹ Info trafic' }[topSeverity];
-    // Aperçu : titre du premier message le plus sévère
-    const topAlert   = alertsToShow.find(a => a.severity === topSeverity) || alertsToShow[0];
+    const topAlert   = withSev.find(a => a.effectiveSev === topSeverity) || withSev[0];
     const preview    = topAlert.headerText || topAlert.description || '';
     const previewTxt = preview.length > 80 ? preview.slice(0, 80) + '…' : preview;
     const uid = 'al_' + Math.random().toString(36).slice(2,7);
 
-    const cards = alertsToShow.map(a => {
+    const cards = withSev.map(a => {
       const cause  = causeLabels[a.cause]  ?? null;
       const effect = effectLabels[a.effect] ?? null;
       const label  = [cause, effect].filter(Boolean).join(' · ');
       const title  = a.headerText || label || 'Perturbation';
       const desc   = a.description && a.description !== a.headerText ? a.description : null;
-      // Déduction de sévérité depuis effect/cause si le champ severity est absent
-      const sev = a.severity || (
-        (a.effect === 'NO_SERVICE') ? 'blocking' :
-        (a.effect === 'SIGNIFICANT_DELAYS' || a.effect === 'REDUCED_SERVICE' ||
-         a.cause  === 'STRIKE' || a.cause === 'ACCIDENT' ||
-         a.cause  === 'TECHNICAL_PROBLEM' || a.cause === 'DEMONSTRATION') ? 'significant' : 'info'
-      );
-      return `<div class="alert-card ${sev}">
+      return `<div class="alert-card ${a.effectiveSev}">
         <div class="alert-cause">${label || 'Perturbation'}</div>
         <div class="alert-text">${title}${desc ? '<br><span style="opacity:.7;font-size:11px">'+desc+'</span>' : ''}</div>
       </div>`;
