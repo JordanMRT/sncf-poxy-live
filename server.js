@@ -132,6 +132,17 @@ function guessType(tripId, routeId, shortName) {
   return 'TER';
 }
 
+// Sous-marque commerciale extraite du tripId / routeId
+function extractBrand(tripId, routeId, shortName) {
+  const s = `${tripId} ${routeId} ${shortName}`.toUpperCase();
+  if (s.includes('OUIGO'))    return 'OUIGO';
+  if (s.includes('INOUI'))    return 'inoui';
+  if (s.includes('LYRIA'))    return 'Lyria';
+  if (s.includes('EUROSTAR')) return 'Eurostar';
+  if (s.includes('THALYS'))   return 'Thalys';
+  return null;
+}
+
 // Numéro lisible depuis le tripId SNCF
 // "OCESN8504F3823199:2025..." → "8504"
 function extractNum(tripId) {
@@ -218,6 +229,7 @@ function parseTripUpdates(feed) {
     const route      = ref.routes.get(routeId);
     const shortNum   = staticTrip?.shortName || extractNum(rawTripId);
     const type       = guessType(rawTripId, routeId, shortNum);
+    const brand      = extractBrand(rawTripId, routeId, shortNum);
 
     let maxDelay = 0;
     const stops = (tu.stopTimeUpdate || []).map(s => {
@@ -250,6 +262,7 @@ function parseTripUpdates(feed) {
       tripId:     rawTripId,
       num:        shortNum,
       type,
+      brand,
       routeName:  route?.shortName || route?.longName || '',
       startDate:  trip.startDate || today,
       startTime:  trip.startTime || '',
@@ -267,6 +280,17 @@ function parseTripUpdates(feed) {
       timestamp:  tu.timestamp ? toISO(tu.timestamp) : null,
     });
   }
+
+  // DEBUG temporaire — à retirer après
+const tgvs = trains.filter(t => t.type === 'TGV').slice(0, 3);
+tgvs.forEach(t => {
+  console.log('🔍 TGV DEBUG:', JSON.stringify({
+    tripId: t.tripId,
+    routeId: t.routeName,
+    firstStopId: t.stops?.[0]?.stopId,
+    brand: t.brand
+  }));
+});
 
   return trains;
 }

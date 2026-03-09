@@ -615,44 +615,47 @@ function switchTab(tab) {
 }
 
 // ══════════════════════════════════════════════════════
-// BOTTOM SHEET — drag to resize
+// BOTTOM SHEET — drag via translateY
 // ══════════════════════════════════════════════════════
 (function initBottomSheet() {
-  let startY = 0, startH = 0, dragging = false;
+  let startY = 0, currentTranslate = 0, dragging = false;
   const handle = document.getElementById('detailHandle');
   const panel  = document.getElementById('detailPanel');
 
   function onStart(e) {
     if (!isMobile()) return;
     dragging = true;
-    startY = (e.touches ? e.touches[0].clientY : e.clientY);
-    startH = panel.getBoundingClientRect().height;
+    startY = e.touches ? e.touches[0].clientY : e.clientY;
+    currentTranslate = 0; // panel est open donc translateY(0)
     panel.style.transition = 'none';
   }
+
   function onMove(e) {
     if (!dragging) return;
-    const y = (e.touches ? e.touches[0].clientY : e.clientY);
-    const delta = y - startY;
-    const newH = Math.max(120, Math.min(window.innerHeight * 0.92, startH - delta));
-    panel.style.height = newH + 'px';
-    panel.style.maxHeight = newH + 'px';
-    e.preventDefault();
+    const y = e.touches ? e.touches[0].clientY : e.clientY;
+    const delta = Math.max(0, y - startY); // seulement vers le bas
+    panel.style.transform = `translateY(${delta}px)`;
+    // Assombrit l'overlay proportionnellement
+    const ratio = 1 - Math.min(delta / (window.innerHeight * 0.4), 1);
+    const overlay = document.getElementById('detailOverlay');
+    if (overlay) overlay.style.opacity = ratio * 0.5;
+    if (e.cancelable) e.preventDefault();
   }
+
   function onEnd(e) {
     if (!dragging) return;
     dragging = false;
     panel.style.transition = '';
-    const h = panel.getBoundingClientRect().height;
-    const vh = window.innerHeight;
-    // Snap : si trop bas → ferme, sinon garde
-    if (h < vh * 0.18) {
+    const y = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+    const delta = y - startY;
+    // Si glissé de plus de 120px vers le bas → ferme
+    if (delta > 120) {
       closeDetail();
-    } else if (h > vh * 0.75) {
-      panel.style.height = '92vh';
-      panel.style.maxHeight = '92vh';
     } else {
-      panel.style.height = '55vh';
-      panel.style.maxHeight = '55vh';
+      // Sinon snap retour en position ouverte
+      panel.style.transform = 'translateY(0)';
+      const overlay = document.getElementById('detailOverlay');
+      if (overlay) overlay.style.opacity = '';
     }
   }
 
@@ -860,7 +863,7 @@ function renderCards(list) {
     return `<div class="t-card ${cls}${selId===t.id?' selected':''}" onclick="selectTrain('${t.id}')">
       <div class="tc-top">
         <span class="tc-num">${t.type}&nbsp;${t.num}</span>
-        <span class="tc-type ${tc}">${t.type}</span>
+        <span class="tc-type ${tc}">${t.brand || t.type}</span>
         <span class="tc-delay" style="color:${delayColor}">${delayLabel}</span>
       </div>
       <div class="tc-route"><strong>${t.from}</strong> → <strong>${t.to}</strong></div>
@@ -886,7 +889,7 @@ function renderMarkers(list) {
     const icon = trainIcon(t, pos.bearing, color, glow);
     const m = L.marker([pos.lat, pos.lon], { icon, zIndexOffset: t.delay > 0 ? 100 : 0 }).addTo(map);
     m.bindPopup(`<div style="font-family:'DM Sans',sans-serif;font-size:13px;min-width:150px">
-      <b>${t.type} ${t.num}</b><br>
+      <b>${t.type} ${t.num}</b>${t.brand ? ` <span style="opacity:.6;font-size:11px">· ${t.brand}</span>` : ''}<br>
       <span style="color:#888;font-size:12px">${t.from} → ${t.to}</span><br>
       <span style="color:${color}">${t.delay > 0 ? '+'+t.delay+' min' : "À l'heure"}</span>
     </div>`, { closeButton:false });
@@ -948,7 +951,7 @@ function selectTrain(id) {
     const icon = trainIcon(t, pos.bearing, color, glow);
     const m = L.marker([pos.lat, pos.lon], { icon, zIndexOffset: 1000 }).addTo(map);
     m.bindPopup(`<div style="font-family:'DM Sans',sans-serif;font-size:13px;min-width:150px">
-      <b>${t.type} ${t.num}</b><br>
+      <b>${t.type} ${t.num}</b>${t.brand ? ` <span style="opacity:.6;font-size:11px">· ${t.brand}</span>` : ''}<br>
       <span style="color:#888;font-size:12px">${t.from} → ${t.to}</span><br>
       <span style="color:${color}">${t.delay > 0 ? '+'+t.delay+' min' : "À l'heure"}</span>
     </div>`, { closeButton:false });
@@ -963,10 +966,10 @@ function selectTrain(id) {
   if (isMobile()) {
     const overlay = document.getElementById('detailOverlay');
     overlay.classList.add('visible');
-    // Reset hauteur bottom sheet
+    overlay.style.opacity = '';
+    // Reset transform inline éventuel du drag précédent
     const panel = document.getElementById('detailPanel');
-    panel.style.height = '';
-    panel.style.maxHeight = '';
+    panel.style.transform = '';
   }
 
   showDetail(t, pos);
@@ -978,10 +981,10 @@ function selectTrain(id) {
 function showDetail(t, pos) {
   const { delayLabel, delayColor } = statusInfo(t);
   document.getElementById('detNum').textContent = `${t.type} ${t.num}`;
-  document.getElementById('detRoute').innerHTML = `<strong>${t.from}</strong> → <strong>${t.to}</strong>`;
+  document.getElementById('detRoute').innerHTML = `${t.brand ? `<span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:4px">${t.brand}</span>` : ''}<strong>${t.from}</strong> → <strong>${t.to}</strong>`;
   const rtMap = { NO_DISRUPTION:'✓ Normal', SIGNIFICANT_DELAYS:'⚠️ Retardé', MODIFIED_SERVICE:'🔵 Modifié', NO_SERVICE:'⛔ Supprimé' };
   document.getElementById('detMeta').innerHTML = `
-    <span class="meta-pill">${t.type}</span>
+    <span class="meta-pill">${t.brand || t.type}</span>
     <span class="meta-pill" style="color:${delayColor}">${delayLabel}</span>
     ${t.fromTime ? `<span class="meta-pill">Départ: ${fmtISO(t.fromTime)}</span>` : ''}
     ${t.toTime   ? `<span class="meta-pill">Arrivée: ${fmtISO(t.toTime)}</span>`   : ''}
@@ -1143,8 +1146,11 @@ function findAtStation(stops, now) {
 }
 
 function closeDetail() {
-  document.getElementById('detailPanel').classList.remove('open');
+  const panel = document.getElementById('detailPanel');
+  panel.style.transform = ''; // retire le transform inline du drag
+  panel.classList.remove('open');
   document.getElementById('detailOverlay').classList.remove('visible');
+  document.getElementById('detailOverlay').style.opacity = '';
   clearRoutes();
   selId = null;
   document.querySelectorAll('.t-card.selected').forEach(c => c.classList.remove('selected'));
