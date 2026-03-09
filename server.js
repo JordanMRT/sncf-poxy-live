@@ -292,6 +292,11 @@ tgvs.forEach(t => {
   }));
 });
 
+const firstStopId = tu.stopTimeUpdate?.[0]?.stopId || '';
+const brand = extractBrand(rawTripId, routeId, shortNum, firstStopId);
+// DEBUG
+if (type === 'TGV') console.log('🔍 RAW firstStopId:', JSON.stringify(firstStopId), '| includes INOUI:', firstStopId.toUpperCase().includes('INOUI'));
+
   return trains;
 }
 
