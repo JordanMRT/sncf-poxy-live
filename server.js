@@ -132,9 +132,10 @@ function guessType(tripId, routeId, shortName) {
   return 'TER';
 }
 
-// Sous-marque commerciale extraite du tripId / routeId
-function extractBrand(tripId, routeId, shortName) {
-  const s = `${tripId} ${routeId} ${shortName}`.toUpperCase();
+// Sous-marque commerciale — cherche dans tripId, routeId ET le premier stopId
+// car SNCF encode la marque dans "StopPoint:OCETGV INOUI-87212027"
+function extractBrand(tripId, routeId, shortName, firstStopId) {
+  const s = `${tripId} ${routeId} ${shortName} ${firstStopId || ''}`.toUpperCase();
   if (s.includes('OUIGO'))    return 'OUIGO';
   if (s.includes('INOUI'))    return 'inoui';
   if (s.includes('LYRIA'))    return 'Lyria';
@@ -229,7 +230,9 @@ function parseTripUpdates(feed) {
     const route      = ref.routes.get(routeId);
     const shortNum   = staticTrip?.shortName || extractNum(rawTripId);
     const type       = guessType(rawTripId, routeId, shortNum);
-    const brand      = extractBrand(rawTripId, routeId, shortNum);
+    // firstStopId contient "StopPoint:OCETGV INOUI-..." → source de la marque
+    const firstStopId = (tu.stopTimeUpdate?.[0]?.stopId || '').toUpperCase();
+    const brand      = extractBrand(rawTripId, routeId, shortNum, firstStopId);
 
     let maxDelay = 0;
     const stops = (tu.stopTimeUpdate || []).map(s => {
@@ -280,22 +283,6 @@ function parseTripUpdates(feed) {
       timestamp:  tu.timestamp ? toISO(tu.timestamp) : null,
     });
   }
-
-  // DEBUG temporaire — à retirer après
-const tgvs = trains.filter(t => t.type === 'TGV').slice(0, 3);
-tgvs.forEach(t => {
-  console.log('🔍 TGV DEBUG:', JSON.stringify({
-    tripId: t.tripId,
-    routeId: t.routeName,
-    firstStopId: t.stops?.[0]?.stopId,
-    brand: t.brand
-  }));
-});
-
-const firstStopId = tu.stopTimeUpdate?.[0]?.stopId || '';
-const brand = extractBrand(rawTripId, routeId, shortNum, firstStopId);
-// DEBUG
-if (type === 'TGV') console.log('🔍 RAW firstStopId:', JSON.stringify(firstStopId), '| includes INOUI:', firstStopId.toUpperCase().includes('INOUI'));
 
   return trains;
 }
