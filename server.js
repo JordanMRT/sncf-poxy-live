@@ -118,30 +118,39 @@ function resolveStop(rawId) {
 }
 
 // ══════════════════════════════════════════════
-// TYPE DE TRAIN
+// TYPE ET MARQUE DU TRAIN
 // ══════════════════════════════════════════════
-function guessType(tripId, routeId, shortName) {
-  const s = `${tripId} ${routeId} ${shortName}`.toUpperCase();
-  if (s.match(/OUIGO|INOUI|LYRIA|EUROSTAR|THALYS|TGV/)) return 'TGV';
-  if (s.match(/INTERCIT|INTERCITÉS/))                    return 'IC';
-  if (s.match(/TER|TRAIN TER/))                          return 'TER';
-  // Déduction par numéro de train
-  const n = shortName.replace(/\D/g, '');
-  if (n.length === 4 && ['6','8'].includes(n[0]))        return 'TGV';
-  if (n.length === 4 && n[0] === '3')                    return 'IC';
-  return 'TER';
-}
-
-// Sous-marque commerciale — cherche dans tripId, routeId ET le premier stopId
-// car SNCF encode la marque dans "StopPoint:OCETGV INOUI-87212027"
-function extractBrand(tripId, routeId, shortName, firstStopId) {
+// Résout type (TGV/IC/TER) ET brand (inoui/OUIGO/…) en une passe
+// pour éviter la désynchronisation entre les deux fonctions.
+// firstStopId contient la marque encodée par SNCF : "StopPoint:OCETGV INOUI-87212027"
+function resolveTypeAndBrand(tripId, routeId, shortName, firstStopId) {
   const s = `${tripId} ${routeId} ${shortName} ${firstStopId || ''}`.toUpperCase();
-  if (s.includes('OUIGO'))    return 'OUIGO';
-  if (s.includes('INOUI'))    return 'inoui';
-  if (s.includes('LYRIA'))    return 'Lyria';
-  if (s.includes('EUROSTAR')) return 'Eurostar';
-  if (s.includes('THALYS'))   return 'Thalys';
-  return null;
+
+  // Marque détectée en priorité depuis firstStopId
+  let brand = null;
+  if (s.includes('OUIGO'))    brand = 'OUIGO';
+  else if (s.includes('INOUI'))    brand = 'inoui';
+  else if (s.includes('LYRIA'))    brand = 'Lyria';
+  else if (s.includes('EUROSTAR')) brand = 'Eurostar';
+  else if (s.includes('THALYS'))   brand = 'Thalys';
+
+  // Type déduit — si une brand TGV connue est détectée, c'est forcément un TGV
+  let type;
+  if (brand || s.match(/TGV/)) {
+    type = 'TGV';
+  } else if (s.match(/INTERCIT|INTERCITÉS/)) {
+    type = 'IC';
+  } else if (s.match(/TER|TRAIN TER/)) {
+    type = 'TER';
+  } else {
+    // Déduction par numéro de train
+    const n = shortName.replace(/\D/g, '');
+    if (n.length === 4 && ['6','8'].includes(n[0])) type = 'TGV';
+    else if (n.length === 4 && n[0] === '3')        type = 'IC';
+    else                                             type = 'TER';
+  }
+
+  return { type, brand };
 }
 
 // Numéro lisible depuis le tripId SNCF
@@ -228,11 +237,10 @@ function parseTripUpdates(feed) {
     const staticTrip = ref.trips.get(rawTripId);
     const routeId    = staticTrip?.routeId || trip.routeId || '';
     const route      = ref.routes.get(routeId);
-    const shortNum   = staticTrip?.shortName || extractNum(rawTripId);
-    const type       = guessType(rawTripId, routeId, shortNum);
-    // firstStopId contient "StopPoint:OCETGV INOUI-..." → source de la marque
-    const firstStopId = (tu.stopTimeUpdate?.[0]?.stopId || '').toUpperCase();
-    const brand      = extractBrand(rawTripId, routeId, shortNum, firstStopId);
+    const shortNum    = staticTrip?.shortName || extractNum(rawTripId);
+    // firstStopId contient "StopPoint:OCETGV INOUI-..." → source fiable de type+marque
+    const firstStopId = tu.stopTimeUpdate?.[0]?.stopId || '';
+    const { type, brand } = resolveTypeAndBrand(rawTripId, routeId, shortNum, firstStopId);
 
     let maxDelay = 0;
     const stops = (tu.stopTimeUpdate || []).map(s => {

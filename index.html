@@ -1061,9 +1061,16 @@ function showDetail(t, pos) {
   const currentSegIdx = pos?.segIdx ?? findCurrentSegment(stops, now);
   const atStationIdx  = findAtStation(stops, now);
   const totalStops    = stops.length;
+  const skippedCount  = stops.filter(s => s.scheduleRelationship === 'SKIPPED').length;
+  const addedCount    = stops.filter(s => s.scheduleRelationship === 'ADDED').length;
+  const servedCount   = totalStops - skippedCount;
+  const stopsTitleExtra = [
+    skippedCount > 0 ? `<span style="color:var(--red);font-size:11px">${skippedCount} supprimé${skippedCount>1?'s':''}</span>` : '',
+    addedCount   > 0 ? `<span style="color:var(--accent);font-size:11px">${addedCount} ajouté${addedCount>1?'s':''}</span>` : '',
+  ].filter(Boolean).join(' · ');
 
   document.getElementById('detBody').innerHTML = alertsHTML + (totalStops
-    ? `<div class="stops-title">Arrêts desservis (${totalStops})</div><div class="stops-container">`
+    ? `<div class="stops-title">Arrêts desservis (${servedCount})${stopsTitleExtra ? ' · '+stopsTitleExtra : ''}</div><div class="stops-container">`
       + stops.map((s, i) => {
           const skip  = s.scheduleRelationship === 'SKIPPED';
           const added = s.scheduleRelationship === 'ADDED';
@@ -1097,7 +1104,7 @@ function showDetail(t, pos) {
           if (depTime&&arrTime&&depTime>arrTime) { const dw=Math.round((depTime-arrTime)/60000); if(dw>0) dwellHTML=`<span class="dwell${isAtStation?' current':''}">${dw} min d'arrêt</span>`; }
           let subHTML='';
           if (skip) subHTML=`<span class="mini-skip">Arrêt supprimé</span>`;
-          else if (added) subHTML=`<span class="mini-add">+ Ajouté</span>`;
+          else if (added) subHTML=`<span class="mini-add">Arrêt ajouté</span>`;
           else {
             if (arrTime) { if(arrTheo) subHTML+=`<span class="st struck">${fmtISO(arrTheo.toISOString())}</span>`; subHTML+=`<span class="st${arrDelay>0?' amended':' time'}">Arrivée: ${fmtISO(arrTime.toISOString())}</span>`; }
             if (depTime) { if(depTheo) subHTML+=`<span class="st struck">${fmtISO(depTheo.toISOString())}</span>`; subHTML+=`<span class="st${depDelay>0?' amended':' time'}">Départ: ${fmtISO(depTime.toISOString())}</span>`; }
