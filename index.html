@@ -399,11 +399,11 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
     position: fixed;
     right: var(--panel-gap);
     left: var(--panel-gap);
-    top: auto;
-    width: auto;
+    top: calc(52px + var(--safe-top) + var(--panel-gap));
     bottom: calc(var(--tab-h) + var(--panel-gap) * 2 + var(--safe-bottom));
-    height: 85vh;
-    max-height: 85vh;
+    width: auto;
+    height: auto;
+    max-height: none;
     border-left: none;
     border-top: none;
     border-radius: var(--panel-radius);
@@ -412,7 +412,7 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
     -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
     border: 1px solid var(--glass-border);
     box-shadow: var(--glass-shadow);
-    transform: translateY(calc(100% + var(--tab-h) + var(--panel-gap) * 2 + var(--safe-bottom)));
+    transform: translateY(100vh);
     transition: transform .32s cubic-bezier(.4,0,.2,1);
     z-index: 1200;
     padding-bottom: 0;
