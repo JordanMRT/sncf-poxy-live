@@ -47,7 +47,8 @@ document.currentScript.after(mlink);
   --safe-top: env(safe-area-inset-top, 0px);
   --tab-h: 56px;
   --glass-bg: rgba(12, 12, 20, 0.70);
-  --glass-blur: 22px;
+  --glass-blur: 22px;   /* desktop */
+  --glass-blur-mob: 14px; /* mobile — plus léger pour le GPU */
   --glass-sat: 1.6;
   --glass-border: rgba(255,255,255,0.10);
   --glass-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.05) inset;
@@ -98,7 +99,7 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 .banner.show{display:block;}
 .banner.alert{background:rgba(227,6,19,.1);border-color:rgba(227,6,19,.3);color:#FF8A80;}
 .banner.warn{background:rgba(255,152,0,.1);border-color:rgba(255,152,0,.3);color:#FFB74D;}
-.trains-list{flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;padding:6px 0;}
+.trains-list{flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;padding:6px 0;-webkit-overflow-scrolling:touch;touch-action:pan-y;}
 
 /* ── CARDS TRAINS ── */
 .t-card{
@@ -338,6 +339,9 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
    ════════════════════════════════════════════════════ */
 @media (max-width: 768px) {
 
+  /* Réduit le blur pour soulager le GPU mobile */
+  :root { --glass-blur: 14px; --glass-sat: 1.3; }
+
   /* Header mobile — compact */
   header {
     height: 52px;
@@ -394,6 +398,7 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
     z-index: 1100;
     padding: 4px;
     gap: 4px;
+    will-change: transform;
   }
   .tab-item {
     flex: 1;
@@ -475,6 +480,7 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
     transition: transform .32s cubic-bezier(.4,0,.2,1);
     z-index: 1200;
     padding-bottom: 0;
+    will-change: transform;
   }
   .detail.open { transform: translateY(0); }
   .detail.peek { transform: translateY(40%); }
@@ -530,6 +536,7 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
     flex: 1;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
   }
 
   /* Poignée */
@@ -552,16 +559,15 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
   .det-close { top: 10px; right: 12px; }
   .det-num { font-size: 24px; }
 
-  /* Overlay */
+  /* Overlay — fond semi-transparent sans blur (économie GPU) */
   .detail-overlay {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,.45);
+    background: rgba(0,0,0,.5);
     z-index: 1190;
     opacity: 0;
     transition: opacity .32s;
-    backdrop-filter: blur(2px);
   }
   .detail-overlay.visible { display: block; opacity: 1; }
 
@@ -723,8 +729,11 @@ const REFRESH_MS = 60000;
 
 let map, allTrains = [], allAlerts = [], markers = {}, routeLayers = [], selId = null, activeFilter = 'all';
 let searchTimer = null, mobSearchTimer = null;
-let isMobile = () => window.innerWidth <= 768;
 let activeTab = 'map';
+// isMobile en valeur booléenne — évite window.innerWidth à chaque appel
+let isMobileVal = window.innerWidth <= 768;
+const isMobile = () => isMobileVal;
+window.addEventListener('resize', () => { isMobileVal = window.innerWidth <= 768; }, { passive: true });
 
 // ══════════════════════════════════════════════════════
 // TAB BAR — navigation mobile
@@ -793,9 +802,12 @@ function switchTab(tab) {
   handle.addEventListener('touchstart', onStart, { passive: true });
   handle.addEventListener('touchmove',  onMove,  { passive: false });
   handle.addEventListener('touchend',   onEnd);
-  handle.addEventListener('mousedown',  onStart);
-  window.addEventListener('mousemove',  onMove);
-  window.addEventListener('mouseup',    onEnd);
+  // Sur desktop uniquement — inutile sur mobile où le drag est touch
+  if (!isMobileVal) {
+    handle.addEventListener('mousedown', onStart);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup',   onEnd);
+  }
 })();
 
 // ══════════════════════════════════════════════════════
@@ -916,20 +928,15 @@ async function loadTrains() {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     allTrains = data.trains || [];
+    invalidatePosCache(); // positions recalculées avec les nouvelles données
     try {
       const ra = await fetch(`${PROXY}/alerts`, { signal: AbortSignal.timeout(10000) });
       const da = await ra.json();
       allAlerts = da.alerts || [];
     } catch(e) { allAlerts = []; }
     render();
-    const nb  = allTrains.filter(t => t.rtStatus !== 'NO_DISRUPTION').length;
     const age = data.cacheAgeSec != null ? ` · données ${data.cacheAgeSec}s` : '';
-    setStatus(`${allTrains.length} trains · ${nb} perturbés${age} · màj ${hhmm()}`);
-
-    // Badge notif sur l'onglet Trains
-    const notif = document.getElementById('tabNotif');
-    if (nb > 0) { notif.textContent = nb; notif.style.display = 'block'; }
-    else notif.style.display = 'none';
+    setStatus(`${allTrains.length} trains · ${allTrains.filter(t=>t.rtStatus!=='NO_DISRUPTION').length} perturbés${age} · màj ${hhmm()}`);
 
   } catch(e) {
     console.error(e);
@@ -965,22 +972,76 @@ function filtered() {
 
 function render() {
   const list = filtered();
+  const now = Date.now();
+
+  // Une seule passe sur allTrains pour banner + stats
+  let cancelCount = 0, bigDelayCount = 0, lateCount = 0;
+  for (const t of allTrains) {
+    if (t.rtStatus === 'NO_SERVICE') { cancelCount++; lateCount++; }
+    else if (t.delay > 15) bigDelayCount++;
+    if (t.delay > 0) lateCount++;
+  }
+
+  // Badge count
   document.getElementById('countBadge').textContent    = list.length;
   document.getElementById('countBadgeMob').textContent = list.length;
-  renderBanner();
-  updateHeaderStats(list);
+
+  // Bannière
+  const show = cancelCount || bigDelayCount;
+  const bannerCls = `banner${show?' show':''} ${cancelCount?'alert':'warn'}`;
+  const bannerHTML = show ? [cancelCount ? `⛔ ${cancelCount} supprimé(s)` : '', bigDelayCount ? `⚠️ ${bigDelayCount} retard(s) > 15 min` : ''].filter(Boolean).join(' · ') : '';
+  ['banner','bannerMob'].forEach(id => {
+    const el = document.getElementById(id);
+    el.className = bannerCls; el.innerHTML = bannerHTML;
+  });
+
+  // Compteurs header (desktop uniquement)
+  if (!isMobileVal) {
+    const hs = document.getElementById('headerStats');
+    if (hs) {
+      hs.style.display = 'flex';
+      document.getElementById('hstatTotal').textContent = list.length;
+      const lw = document.getElementById('hstatLateWrap');
+      const cw = document.getElementById('hstatCancelWrap');
+      const lateFiltered = list.filter(t => t.delay > 0).length;
+      const cancelFiltered = list.filter(t => t.rtStatus === 'NO_SERVICE').length;
+      if (lateFiltered > 0) { document.getElementById('hstatLate').textContent = lateFiltered; lw.style.display = 'flex'; }
+      else lw.style.display = 'none';
+      if (cancelFiltered > 0) { document.getElementById('hstatCancel').textContent = cancelFiltered; cw.style.display = 'flex'; }
+      else cw.style.display = 'none';
+    }
+  }
+
+  // Badge notif onglet Trains
+  const nb = allTrains.filter(t => t.rtStatus !== 'NO_DISRUPTION').length;
+  const notif = document.getElementById('tabNotif');
+  if (notif) {
+    if (nb > 0) { notif.textContent = nb; notif.style.display = 'block'; }
+    else notif.style.display = 'none';
+  }
+
   if (!list.length) {
     const empty = `<div class="empty">Aucun train pour ce filtre.</div>`;
     document.getElementById('trainsList').innerHTML    = empty;
     document.getElementById('trainsListMob').innerHTML = empty;
     clearMarkers(); return;
   }
-  renderCards(list);
+  renderCards(list, now);
   renderMarkers(list);
 }
 
-function renderCards(list) {
-  const now = Date.now();
+// Extraction HH:MM rapide depuis chaîne ISO — évite new Date() + toLocaleTimeString
+function fmtISO(iso) {
+  if (!iso) return '—';
+  // ISO format: "2026-03-18T14:32:00.000Z" — on extrait HH:MM en UTC+1 (France)
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit', timeZone:'Europe/Paris' });
+  } catch { return '—'; }
+}
+
+function renderCards(list, now) {
+  now = now || Date.now();
   const html = list.map(t => {
     const { cls, delayLabel, delayColor } = statusInfo(t);
     const tc  = `tag-${t.type.toLowerCase()}`;
@@ -988,7 +1049,7 @@ function renderCards(list) {
     const arr = t.toTime   ? fmtISO(t.toTime)   : null;
     const depD = t.stops?.[0]?.departure?.delay ? Math.round(t.stops[0].departure.delay/60) : 0;
 
-    // Calcul progression trajet (0–100%)
+    // Progression trajet — timestamps déjà parsés côté serveur
     let progress = 0;
     if (t.fromTime && t.toTime) {
       const start = new Date(t.fromTime).getTime();
@@ -1012,23 +1073,12 @@ function renderCards(list) {
       ${progress > 0 ? `<div class="tc-progress"><div class="tc-progress-fill" style="width:${progress}%"></div></div>` : ''}
     </div>`;
   }).join('');
+
+  // Sur mobile : ne rendre que la liste visible (mobListPanel)
+  // Sur desktop : ne rendre que la sidebar
+  // Les deux listes sont maintenant le même élément CSS selon le viewport
   document.getElementById('trainsList').innerHTML    = html;
   document.getElementById('trainsListMob').innerHTML = html;
-}
-
-function updateHeaderStats(list) {
-  const late   = list.filter(t => t.delay > 0).length;
-  const cancel = list.filter(t => t.rtStatus === 'NO_SERVICE').length;
-  const el = document.getElementById('headerStats');
-  if (!el) return;
-  el.style.display = 'flex';
-  document.getElementById('hstatTotal').textContent = list.length;
-  const lateWrap = document.getElementById('hstatLateWrap');
-  const cancelWrap = document.getElementById('hstatCancelWrap');
-  if (late > 0) { document.getElementById('hstatLate').textContent = late; lateWrap.style.display = 'flex'; }
-  else lateWrap.style.display = 'none';
-  if (cancel > 0) { document.getElementById('hstatCancel').textContent = cancel; cancelWrap.style.display = 'flex'; }
-  else cancelWrap.style.display = 'none';
 }
 
 function renderMarkers(list) {
@@ -1037,21 +1087,6 @@ function renderMarkers(list) {
 
 function clearMarkers() {
   clearDeckMarkers();
-}
-
-// ══════════════════════════════════════════════════════
-// BANNIÈRE
-// ══════════════════════════════════════════════════════
-function renderBanner() {
-  const cancel = allTrains.filter(t => t.rtStatus === 'NO_SERVICE').length;
-  const big    = allTrains.filter(t => t.delay > 15).length;
-  const show   = cancel || big;
-  const cls    = `banner${show?' show':''} ${cancel?'alert':'warn'}`;
-  const html   = show ? [cancel ? `⛔ ${cancel} supprimé(s)` : '', big ? `⚠️ ${big} retard(s) > 15 min` : ''].filter(Boolean).join(' · ') : '';
-  ['banner','bannerMob'].forEach(id => {
-    const el = document.getElementById(id);
-    el.className = cls; el.innerHTML = html;
-  });
 }
 
 // ══════════════════════════════════════════════════════
@@ -1075,7 +1110,7 @@ function selectTrain(id) {
   const { color } = mkColor(t);
   drawRoute(t, color);
 
-  const pos = interpolatePosition(t);
+  const pos = getCachedPosition(t);
   if (map && pos) map.setView([pos.lat, pos.lon], 9, { animate:true });
   else if (map && t.lat && t.lon) map.setView([t.lat, t.lon], 8, { animate:true });
 
@@ -1385,11 +1420,7 @@ function mkColor(t) {
   if (t.rtStatus === 'MODIFIED_SERVICE') return { color:'#2196F3', glow:'rgba(33,150,243,.2)' };
   return { color:'#00E676', glow:'rgba(0,230,118,.15)' };
 }
-function fmtISO(iso) {
-  if (!iso) return '—';
-  try { return new Date(iso).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' }); } catch { return iso; }
-}
-function hhmm() { return new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' }); }
+function hhmm() { return new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit', timeZone:'Europe/Paris' }); }
 function setStatus(html) {
   document.getElementById('statusBar').innerHTML = `<div class="live-dot" style="animation-duration:3s"></div><span>${html}</span>`;
 }
@@ -1410,7 +1441,18 @@ const SPRITE_URL = `data:image/png;base64,${SPRITE_B64}`;
 // Grille sprite : 5 col × 3 lignes, cellule 64×64, sprite 320×192
 // Colonnes : 0=vert 1=orange 2=rouge 3=bleu 4=gris
 // Lignes   : 0=TGV 1=IC 2=TER
-const CELL = 64, COLS = 5, ROWS = 3, SW = 320, SH = 192;
+const CELL = 64, COLS = 5, ROWS = 3;
+
+// iconMapping calculé une seule fois au démarrage — jamais recréé au render
+const ICON_MAPPING = (() => {
+  const m = {};
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      m[`${r}_${c}`] = { x: c * CELL, y: r * CELL, width: CELL, height: CELL, anchorX: CELL / 2, anchorY: CELL / 2, mask: false };
+    }
+  }
+  return m;
+})();
 
 function spriteCoords(col, row) {
   return { x: col * CELL, y: row * CELL, width: CELL, height: CELL };
@@ -1428,6 +1470,17 @@ function getIconDef(train) {
 }
 
 let deckOverlay = null;
+// Cache des positions interpolées — invalidé à chaque loadTrains
+let posCache = {};
+
+function invalidatePosCache() { posCache = {}; }
+
+function getCachedPosition(train) {
+  const key = train.id;
+  if (posCache[key] !== undefined) return posCache[key];
+  posCache[key] = interpolatePosition(train);
+  return posCache[key];
+}
 
 function initDeck() {
   if (!map) return;
@@ -1462,17 +1515,12 @@ function initDeck() {
     }
   });
 
-  // Sync deck.gl avec Leaflet à chaque mouvement de carte
+  // Sync viewState deck.gl ↔ Leaflet (move/zoom uniquement — pas de redimensionnement canvas)
   function syncDeck() {
     if (!deckOverlay || !map) return;
     const c = map.getCenter();
     const z = map.getZoom();
-    const size = map.getSize();
-    canvas.width  = size.x;
-    canvas.height = size.y;
     deckOverlay.setProps({
-      width: size.x,
-      height: size.y,
       viewState: {
         longitude: c.lng,
         latitude:  c.lat,
@@ -1483,10 +1531,20 @@ function initDeck() {
     });
   }
 
-  map.on('move',     syncDeck);
-  map.on('zoom',     syncDeck);
-  map.on('resize',   syncDeck);
-  syncDeck();
+  // Redimensionne le canvas uniquement au resize (coûteux — efface le WebGL context)
+  function resizeDeck() {
+    if (!deckOverlay || !map) return;
+    const size = map.getSize();
+    canvas.width  = size.x;
+    canvas.height = size.y;
+    deckOverlay.setProps({ width: size.x, height: size.y });
+    syncDeck();
+  }
+
+  map.on('move',   syncDeck);
+  map.on('zoom',   syncDeck);
+  map.on('resize', resizeDeck);
+  resizeDeck(); // init
 }
 
 function renderDeckMarkers(list) {
@@ -1496,31 +1554,18 @@ function renderDeckMarkers(list) {
   const data = list
     .filter(t => t.rtStatus !== 'NO_SERVICE')
     .map(t => {
-      const pos = interpolatePosition(t);
+      const pos = getCachedPosition(t);
       if (!pos) return null;
       const ic = getIconDef(t);
       return { train: t, pos, ic };
     })
     .filter(Boolean);
 
-  const iconAtlas = SPRITE_URL;
-  const iconMapping = {};
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      iconMapping[`${r}_${c}`] = {
-        x: c * CELL, y: r * CELL,
-        width: CELL, height: CELL,
-        anchorX: CELL / 2, anchorY: CELL / 2,
-        mask: false
-      };
-    }
-  }
-
   const iconLayer = new deck.IconLayer({
     id: 'trains',
     data,
-    iconAtlas,
-    iconMapping,
+    iconAtlas: SPRITE_URL,
+    iconMapping: ICON_MAPPING,
     getIcon:     d => `${d.ic.y / CELL}_${d.ic.x / CELL}`,
     getPosition: d => [d.pos.lon, d.pos.lat],
     getAngle:    d => -d.pos.bearing,
