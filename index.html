@@ -143,6 +143,30 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 .t-card.mod    .tc-progress-fill { background: var(--blue); }
 .t-card.cancel .tc-progress-fill { background: var(--grey); }
 
+/* ── ÉPINGLAGE ── */
+.tc-pin{margin-left:6px;background:none;border:none;cursor:pointer;font-size:13px;line-height:1;padding:2px;flex-shrink:0;opacity:.35;transition:opacity .15s, transform .15s;}
+.tc-pin:hover{opacity:.85;transform:scale(1.12);}
+.tc-pin.pinned{opacity:1;}
+
+.pinned-section{border-bottom:1px solid var(--border);padding:12px 14px 12px;flex-shrink:0;}
+.pinned-head{font-family:'Bebas Neue',sans-serif;font-size:12px;letter-spacing:1.5px;color:var(--muted);margin-bottom:8px;}
+.pinned-strip{display:flex;gap:8px;overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;padding-bottom:2px;}
+.pin-card{flex-shrink:0;min-width:136px;max-width:136px;background:rgba(255,193,7,.05);border:1px solid rgba(255,193,7,.25);border-radius:8px;padding:8px 10px;cursor:pointer;transition:border-color .15s, background .15s;}
+.pin-card:hover{border-color:rgba(255,193,7,.55);}
+.pin-card.selected{border-color:var(--red);background:rgba(227,6,19,.08);}
+.pin-card.not-running{cursor:default;opacity:.55;}
+.pin-card-top{display:flex;align-items:center;gap:5px;margin-bottom:4px;}
+.pin-card-num{font-family:'DM Mono',monospace;font-size:12px;font-weight:600;}
+.pin-card-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.pin-card-route{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;}
+.pin-card-status{font-family:'DM Mono',monospace;font-size:10px;}
+.pin-unpin{margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;padding:0 2px;opacity:.6;transition:opacity .15s, color .15s;}
+.pin-unpin:hover{opacity:1;color:var(--red);}
+
+.det-pin{position:absolute;top:14px;right:52px;display:flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border-radius:50%;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:var(--muted);cursor:pointer;font-size:13px;line-height:1;opacity:.5;transition:all .15s;}
+.det-pin:hover{background:rgba(255,193,7,.15);border-color:rgba(255,193,7,.4);transform:scale(1.08);}
+.det-pin.pinned{opacity:1;color:#FFC107;background:rgba(255,193,7,.12);border-color:rgba(255,193,7,.35);}
+
 /* ── MAP ── */
 #map-container{position:absolute;inset:0;}
 #map{width:100%;height:100%;}
@@ -559,6 +583,7 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 
   .detail-head { padding: 6px 16px 0; }
   .det-close { top: 10px; right: 12px; }
+  .det-pin { top: 10px; right: 50px; }
   .det-num { font-size: 24px; }
 
   /* Overlay — fond semi-transparent sans blur (économie GPU) */
@@ -618,6 +643,10 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
       <span class="count-badge" id="countBadge">…</span>
     </div>
     <div class="banner" id="banner"></div>
+    <div class="pinned-section" id="pinnedSection" style="display:none">
+      <div class="pinned-head">📌 <span id="pinnedCount">0</span> train(s) épinglé(s)</div>
+      <div class="pinned-strip" id="pinnedStrip"></div>
+    </div>
     <div class="trains-list" id="trainsList">
       <div class="loader"><div class="spin"></div><span>Chargement…</span></div>
     </div>
@@ -654,6 +683,10 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
       </div>
     </div>
     <div class="banner" id="bannerMob"></div>
+    <div class="pinned-section" id="pinnedSectionMob" style="display:none">
+      <div class="pinned-head">📌 <span id="pinnedCountMob">0</span> train(s) épinglé(s)</div>
+      <div class="pinned-strip" id="pinnedStripMob"></div>
+    </div>
     <div class="trains-list" id="trainsListMob">
       <div class="loader"><div class="spin"></div><span>Chargement…</span></div>
     </div>
@@ -682,6 +715,7 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
     </div>
     <div class="detail-head">
       <button class="det-close" onclick="closeDetail()" title="Fermer">✕</button>
+      <button class="det-pin" id="detPinBtn" onclick="toggleDetailPin(event)" title="Épingler ce train">📌</button>
       <div class="det-num" id="detNum"></div>
       <div class="det-route" id="detRoute"></div>
       <div class="det-meta" id="detMeta"></div>
@@ -732,6 +766,40 @@ const REFRESH_MS = 60000;
 let map, allTrains = [], allAlerts = [], markers = {}, routeLayers = [], selId = null, activeFilter = 'all';
 let searchTimer = null, mobSearchTimer = null;
 let activeTab = 'map';
+let detCurrentKey = null;
+
+// ══════════════════════════════════════════════════════
+// ÉPINGLAGE — suit des trains en particulier, persiste
+// entre les sessions (identifiant = type + numéro de train,
+// stable d'un jour à l'autre contrairement au tripId GTFS-RT)
+// ══════════════════════════════════════════════════════
+const PIN_KEY = 'sncf_pinned_trains';
+let pinnedTrains = new Set();
+try { pinnedTrains = new Set(JSON.parse(localStorage.getItem(PIN_KEY) || '[]')); } catch { pinnedTrains = new Set(); }
+
+function trainKey(t) { return `${t.type}_${t.num}`; }
+function isPinned(t) { return pinnedTrains.has(trainKey(t)); }
+function savePinned() {
+  try { localStorage.setItem(PIN_KEY, JSON.stringify([...pinnedTrains])); } catch {}
+}
+function togglePin(key, ev) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  if (pinnedTrains.has(key)) pinnedTrains.delete(key);
+  else pinnedTrains.add(key);
+  savePinned();
+  render();
+  if (detCurrentKey === key) updateDetPinBtn();
+}
+function toggleDetailPin(ev) {
+  if (detCurrentKey) togglePin(detCurrentKey, ev);
+}
+function updateDetPinBtn() {
+  const btn = document.getElementById('detPinBtn');
+  if (!btn) return;
+  const on = detCurrentKey && pinnedTrains.has(detCurrentKey);
+  btn.classList.toggle('pinned', !!on);
+  btn.title = on ? 'Désépingler ce train' : 'Épingler ce train';
+}
 // isMobile en valeur booléenne — évite window.innerWidth à chaque appel
 let isMobileVal = window.innerWidth <= 768;
 const isMobile = () => isMobileVal;
@@ -1028,8 +1096,57 @@ function render() {
     document.getElementById('trainsListMob').innerHTML = empty;
     clearMarkers(); return;
   }
+  renderPinnedSection();
   renderCards(list, now);
   renderMarkers(list);
+}
+
+// ══════════════════════════════════════════════════════
+// SECTION ÉPINGLÉS — toujours visible, peu importe le filtre actif,
+// pour retrouver en un coup d'œil position/retard/arrêts des trains suivis
+// ══════════════════════════════════════════════════════
+function renderPinnedSection() {
+  const keys  = [...pinnedTrains];
+  const wraps = [
+    { sec: 'pinnedSection',    cnt: 'pinnedCount',    strip: 'pinnedStrip' },
+    { sec: 'pinnedSectionMob', cnt: 'pinnedCountMob', strip: 'pinnedStripMob' },
+  ];
+
+  if (!keys.length) {
+    wraps.forEach(w => { document.getElementById(w.sec).style.display = 'none'; });
+    return;
+  }
+
+  const cards = keys.map(key => {
+    const t = allTrains.find(x => trainKey(x) === key);
+    if (!t) {
+      const [type, num] = key.split('_');
+      return `<div class="pin-card not-running">
+        <div class="pin-card-top">
+          <div class="pin-card-dot" style="background:var(--grey)"></div>
+          <span class="pin-card-num">${type}&nbsp;${num}</span>
+          <button class="pin-unpin" onclick="togglePin('${key}', event)" title="Désépingler">✕</button>
+        </div>
+        <div class="pin-card-route">Aucune circulation aujourd'hui</div>
+      </div>`;
+    }
+    const { delayLabel, delayColor } = statusInfo(t);
+    return `<div class="pin-card${selId===t.id?' selected':''}" onclick="selectTrain('${t.id}')">
+      <div class="pin-card-top">
+        <div class="pin-card-dot" style="background:${delayColor}"></div>
+        <span class="pin-card-num">${t.type}&nbsp;${t.num}</span>
+        <button class="pin-unpin" onclick="togglePin('${key}', event)" title="Désépingler">✕</button>
+      </div>
+      <div class="pin-card-route">${t.from} → ${t.to}</div>
+      <div class="pin-card-status" style="color:${delayColor}">${delayLabel}</div>
+    </div>`;
+  }).join('');
+
+  wraps.forEach(w => {
+    document.getElementById(w.sec).style.display = 'block';
+    document.getElementById(w.cnt).textContent    = keys.length;
+    document.getElementById(w.strip).innerHTML    = cards;
+  });
 }
 
 // Extraction HH:MM rapide depuis chaîne ISO — évite new Date() + toLocaleTimeString
@@ -1065,6 +1182,7 @@ function renderCards(list, now) {
         <span class="tc-num">${t.type}&nbsp;${t.num}</span>
         <span class="tc-type ${tc}">${t.brand || t.type}</span>
         <span class="tc-delay" style="color:${delayColor}">${delayLabel}</span>
+        <button class="tc-pin${isPinned(t)?' pinned':''}" onclick="togglePin('${trainKey(t)}', event)" title="${isPinned(t)?'Désépingler':'Épingler ce train'}">📌</button>
       </div>
       <div class="tc-route"><strong>${t.from}</strong> → <strong>${t.to}</strong></div>
       <div class="tc-times">
@@ -1132,6 +1250,8 @@ function selectTrain(id) {
 // PANNEAU DÉTAIL
 // ══════════════════════════════════════════════════════
 function showDetail(t, pos) {
+  detCurrentKey = trainKey(t);
+  updateDetPinBtn();
   const { delayLabel, delayColor } = statusInfo(t);
   document.getElementById('detNum').textContent = `${t.type} ${t.num}`;
   document.getElementById('detRoute').innerHTML = `${t.brand ? `<span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:4px">${t.brand}</span>` : ''}<strong>${t.from}</strong> → <strong>${t.to}</strong>`;
@@ -1563,6 +1683,22 @@ function renderDeckMarkers(list) {
     })
     .filter(Boolean);
 
+  // Halo doré sous les trains épinglés — repérage immédiat sur la carte
+  const pinnedData = data.filter(d => isPinned(d.train));
+  const pinHaloLayer = new deck.ScatterplotLayer({
+    id: 'pinned-halo',
+    data: pinnedData,
+    getPosition: d => [d.pos.lon, d.pos.lat],
+    getRadius:   ICON_SIZE * 0.85,
+    radiusUnits: 'pixels',
+    getFillColor: [255, 193, 7, 55],
+    getLineColor: [255, 193, 7, 220],
+    lineWidthUnits: 'pixels',
+    getLineWidth: 2,
+    stroked: true,
+    pickable: false,
+  });
+
   const iconLayer = new deck.IconLayer({
     id: 'trains',
     data,
@@ -1571,12 +1707,12 @@ function renderDeckMarkers(list) {
     getIcon:     d => `${d.ic.y / CELL}_${d.ic.x / CELL}`,
     getPosition: d => [d.pos.lon, d.pos.lat],
     getAngle:    d => -d.pos.bearing,
-    getSize:     d => d.train.id === selId ? ICON_SIZE * 1.35 : ICON_SIZE,
+    getSize:     d => d.train.id === selId ? ICON_SIZE * 1.35 : isPinned(d.train) ? ICON_SIZE * 1.15 : ICON_SIZE,
     sizeScale:   1,
     sizeUnits:   'pixels',
     pickable:    true,
     onClick:     info => { if (info.object) selectTrain(info.object.train.id); },
-    updateTriggers: { getSize: [selId] }
+    updateTriggers: { getSize: [selId, [...pinnedTrains].join(',')] }
   });
 
   const textLayer = new deck.TextLayer({
@@ -1595,7 +1731,7 @@ function renderDeckMarkers(list) {
     getPixelOffset: [0, 1], // léger centrage vertical
   });
 
-  deckOverlay.setProps({ layers: [iconLayer, textLayer] });
+  deckOverlay.setProps({ layers: [pinHaloLayer, iconLayer, textLayer] });
 }
 
 function clearDeckMarkers() {
