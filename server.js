@@ -10,16 +10,24 @@
  *  - Endpoint /search?q=... pour la barre de recherche
  */
 
-const express  = require('express');
-const cors     = require('cors');
-const fetch    = require('node-fetch');
-const AdmZip   = require('adm-zip');
+const express    = require('express');
+const cors       = require('cors');
+const compression = require('compression');
+const fetch      = require('node-fetch');
+const https      = require('https');
+const AdmZip     = require('adm-zip');
 const GtfsRealtimeBindings = require('gtfs-realtime-bindings');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
 app.use(cors());
+app.use(compression()); // gzip — les payloads /trains peuvent peser plusieurs centaines de Ko
 app.use(express.json());
+
+// Agent HTTPS keep-alive — réutilise les connexions TCP/TLS vers transport.data.gouv.fr
+// au lieu d'en ouvrir une nouvelle à chaque refresh (gain surtout sur Render où le froid coûte cher)
+const keepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 10 });
+const fetchKA = (url, opts = {}) => fetch(url, { ...opts, agent: keepAliveAgent });
 
 // ══════════════════════════════════════════════
 // URLS
@@ -37,7 +45,7 @@ const STATIC_TTL = 24 * 60 * 60 * 1000;
 async function loadGtfsStatic() {
   console.log('📦 Chargement GTFS statique SNCF...');
   try {
-    const res = await fetch(GTFS_STATIC_URL, { timeout: 90000 });
+    const res = await fetchKA(GTFS_STATIC_URL, { timeout: 90000 });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const buf = await res.buffer();
     const zip = new AdmZip(buf);
@@ -215,7 +223,7 @@ function extractText(obj) {
 // PARSE GTFS-RT
 // ══════════════════════════════════════════════
 async function fetchGtfsRt(url) {
-  const res = await fetch(url, { headers:{ 'Accept':'application/x-protobuf' }, timeout:15000 });
+  const res = await fetchKA(url, { headers:{ 'Accept':'application/x-protobuf' }, timeout:15000 });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const buf = await res.arrayBuffer();
   return GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(new Uint8Array(buf));
@@ -316,6 +324,7 @@ function parseAlerts(feed) {
 // ══════════════════════════════════════════════
 const RT_TTL = 60 * 1000;
 let rtCache  = { trains: null, alerts: null, updatedAt: 0 };
+let refreshInFlight = null; // dogpile lock — évite les fetch dupliqués si plusieurs requêtes arrivent pendant un refresh
 
 async function refreshRt() {
   console.log(`[${new Date().toISOString()}] Refresh GTFS-RT...`);
@@ -331,13 +340,27 @@ async function refreshRt() {
 }
 
 async function getCache() {
-  if (!rtCache.trains || Date.now() - rtCache.updatedAt > RT_TTL) await refreshRt();
+  if (!rtCache.trains || Date.now() - rtCache.updatedAt > RT_TTL) {
+    // Une seule requête de refresh à la fois — les autres attendent la même promesse
+    if (!refreshInFlight) {
+      refreshInFlight = refreshRt().finally(() => { refreshInFlight = null; });
+    }
+    await refreshInFlight;
+  }
   return rtCache;
 }
 
 // ══════════════════════════════════════════════
 // ROUTES
 // ══════════════════════════════════════════════
+// Les données ne changent pas plus vite que le cache RT (60s) — autant laisser
+// le navigateur / un éventuel CDN éviter de re-solliciter le serveur entre-temps.
+function cacheHeaders(req, res, next) {
+  res.set('Cache-Control', 'public, max-age=20, stale-while-revalidate=40');
+  next();
+}
+app.use(['/trains', '/alerts', '/summary', '/search'], cacheHeaders);
+
 app.get('/health', (req, res) => res.json({
   status:     'ok',
   uptime:     Math.round(process.uptime()) + 's',
