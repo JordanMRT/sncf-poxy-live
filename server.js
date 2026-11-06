@@ -39,60 +39,79 @@ const GTFS_RT_ALERTS  = 'https://proxy.transport.data.gouv.fr/resource/sncf-gtfs
 // ══════════════════════════════════════════════
 // RÉFÉRENTIEL STATIQUE
 // ══════════════════════════════════════════════
-const ref = { stops: new Map(), trips: new Map(), routes: new Map(), loadedAt: 0 };
+const ref = { stops: new Map(), uic: new Map(), trips: new Map(), routes: new Map(), loadedAt: 0 };
+const stopCache = new Map(); // mémoïsation resolveStop (rawId → gare | null)
 const STATIC_TTL = 24 * 60 * 60 * 1000;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// Charge le GTFS statique SANS bloquer la boucle d'événements trop longtemps.
+// Les 3 maps sont construites à part puis échangées d'un coup à la fin :
+// aucune requête ne voit un référentiel à moitié rempli.
+// Retourne true si le chargement a réussi.
 async function loadGtfsStatic() {
   console.log('📦 Chargement GTFS statique SNCF...');
   try {
-    const res = await fetchKA(GTFS_STATIC_URL, { timeout: 90000 });
+    const res = await fetchKA(GTFS_STATIC_URL, { timeout: 120000 });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const buf = await res.buffer();
-    const zip = new AdmZip(buf);
+    const zip = new AdmZip(await res.buffer());
 
-    parseCSV(zip.readAsText('stops.txt')).forEach(r => {
+    const stops = new Map(), uic = new Map(), routes = new Map(), trips = new Map();
+
+    await parseCSVBuffer(zip.readFile('stops.txt'), ['stop_id', 'stop_name', 'stop_lat', 'stop_lon'], r => {
       if (!r.stop_id) return;
-      ref.stops.set(r.stop_id, {
-        name: r.stop_name || r.stop_id,
-        lat:  parseFloat(r.stop_lat) || null,
-        lon:  parseFloat(r.stop_lon) || null,
-      });
+      const info = { name: r.stop_name || r.stop_id, lat: parseFloat(r.stop_lat) || null, lon: parseFloat(r.stop_lon) || null };
+      stops.set(r.stop_id, info);
+      // Index par code UIC (7-8 derniers chiffres) → résolution O(1) au lieu d'un scan de toutes les gares
+      const m = r.stop_id.match(/(\d{7,8})$/);
+      if (m && !uic.has(m[1])) uic.set(m[1], info);
     });
 
-    parseCSV(zip.readAsText('routes.txt')).forEach(r => {
+    await parseCSVBuffer(zip.readFile('routes.txt'), ['route_id', 'route_short_name', 'route_long_name'], r => {
       if (!r.route_id) return;
-      ref.routes.set(r.route_id, {
-        shortName: r.route_short_name || '',
-        longName:  r.route_long_name  || '',
-      });
+      routes.set(r.route_id, { shortName: r.route_short_name || '', longName: r.route_long_name || '' });
     });
 
-    parseCSV(zip.readAsText('trips.txt')).forEach(r => {
+    // trips.txt est de loin le plus gros fichier : on ne garde que le strict nécessaire
+    await parseCSVBuffer(zip.readFile('trips.txt'), ['trip_id', 'trip_short_name', 'trip_headsign', 'route_id'], r => {
       if (!r.trip_id) return;
-      ref.trips.set(r.trip_id, {
-        shortName: r.trip_short_name || r.trip_headsign || '',
-        routeId:   r.route_id || '',
-        headsign:  r.trip_headsign || '',
-      });
+      trips.set(r.trip_id, { shortName: r.trip_short_name || r.trip_headsign || '', routeId: r.route_id || '' });
     });
 
+    ref.stops = stops; ref.uic = uic; ref.routes = routes; ref.trips = trips;
+    stopCache.clear();
     ref.loadedAt = Date.now();
-    console.log(`✅ Statique OK: ${ref.stops.size} gares, ${ref.trips.size} courses, ${ref.routes.size} lignes`);
+    console.log(`✅ Statique OK: ${stops.size} gares, ${trips.size} courses, ${routes.size} lignes`);
+    return true;
   } catch (err) {
     console.error('❌ Erreur GTFS statique:', err.message);
+    return false;
   }
 }
 
-function parseCSV(text) {
-  const lines = text.split('\n').filter(Boolean);
-  if (lines.length < 2) return [];
-  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-  return lines.slice(1).map(line => {
-    const vals = splitLine(line);
-    const obj  = {};
-    headers.forEach((h, i) => { obj[h] = (vals[i] || '').trim().replace(/^"|"$/g, ''); });
-    return obj;
-  });
+// Parse un CSV directement depuis le Buffer, ligne par ligne (pas de split géant du
+// fichier entier en mémoire) et rend la main à la boucle d'événements tous les 3000
+// lignes pour que /health et les requêtes restent réactifs pendant le chargement.
+async function parseCSVBuffer(buf, wanted, onRow) {
+  if (!buf) return;
+  const len = buf.length;
+  let eol = buf.indexOf(10);
+  if (eol === -1) return;
+  const headers = splitLine(buf.toString('utf8', 0, eol).replace(/^\uFEFF/, '').replace(/\r$/, '')).map(h => h.trim());
+  const idx = wanted.map(w => [w, headers.indexOf(w)]).filter(([, i]) => i !== -1);
+  let pos = eol + 1, n = 0;
+  while (pos < len) {
+    eol = buf.indexOf(10, pos);
+    if (eol === -1) eol = len;
+    const end = (eol > pos && buf[eol - 1] === 13) ? eol - 1 : eol;
+    if (end > pos) {
+      const vals = splitLine(buf.toString('utf8', pos, end));
+      const row = {};
+      for (const [name, i] of idx) row[name] = (vals[i] || '').trim();
+      onRow(row);
+    }
+    pos = eol + 1;
+    if (++n % 3000 === 0) await new Promise(r => setImmediate(r));
+  }
 }
 
 function splitLine(line) {
@@ -108,21 +127,18 @@ function splitLine(line) {
 
 // Résolution d'un stopId GTFS-RT → info gare
 // Les IDs RT peuvent être "StopPoint:OCETGV INOUI-87212027"
-// → on extrait le code UIC 8 chiffres et on cherche dans ref.stops
+// → on extrait le code UIC et on le cherche dans l'index (O(1), mémoïsé)
+let stopMiss = 0; // gares non résolues sur le dernier parse (diagnostic)
 function resolveStop(rawId) {
   if (!rawId) return null;
-  if (ref.stops.has(rawId)) return ref.stops.get(rawId);
-  const m = rawId.match(/(\d{7,8})$/);
-  if (!m) return null;
-  const uic = m[1];
-  for (const [id, s] of ref.stops) {
-    if (id.endsWith(uic)) return s;
+  if (stopCache.has(rawId)) return stopCache.get(rawId);
+  let info = ref.stops.get(rawId) || null;
+  if (!info) {
+    const m = rawId.match(/(\d{7,8})$/);
+    if (m) info = ref.uic.get(m[1]) || null;
   }
-  // tentative avec 7 derniers chiffres
-  for (const [id, s] of ref.stops) {
-    if (id.includes(uic)) return s;
-  }
-  return null;
+  stopCache.set(rawId, info);
+  return info;
 }
 
 // ══════════════════════════════════════════════
@@ -174,9 +190,11 @@ function extractNum(tripId) {
 // ══════════════════════════════════════════════
 // HELPERS
 // ══════════════════════════════════════════════
+// Date du jour en heure de Paris : Render tourne en UTC, ce qui décalait le « jour J »
+// (et faisait disparaître les trains) entre minuit et 1h/2h du matin en France.
+const parisDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' });
 function todayStr() {
-  const d = new Date();
-  return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  return parisDate.format(new Date()).replace(/-/g, '');
 }
 
 function toISO(ts) {
@@ -232,6 +250,7 @@ async function fetchGtfsRt(url) {
 function parseTripUpdates(feed) {
   const today  = todayStr();
   const trains = [];
+  stopMiss = 0;
 
   for (const entity of feed.entity) {
     if (!entity.tripUpdate) continue;
@@ -253,6 +272,7 @@ function parseTripUpdates(feed) {
     let maxDelay = 0;
     const stops = (tu.stopTimeUpdate || []).map(s => {
       const info     = resolveStop(s.stopId);
+      if (!info) stopMiss++;
       const arrDelay = s.arrival?.delay  || 0;
       const depDelay = s.departure?.delay || 0;
       const delay    = Math.max(arrDelay, depDelay);
@@ -323,31 +343,51 @@ function parseAlerts(feed) {
 // CACHE RT 60s
 // ══════════════════════════════════════════════
 const RT_TTL = 60 * 1000;
-let rtCache  = { trains: null, alerts: null, updatedAt: 0 };
-let refreshInFlight = null; // dogpile lock — évite les fetch dupliqués si plusieurs requêtes arrivent pendant un refresh
+let rtCache  = { trains: null, alerts: null, updatedAt: 0, lastError: null };
+let refreshInFlight = null; // verrou unique : timer et requêtes partagent le même refresh en cours
 
-async function refreshRt() {
+async function doRefresh() {
   console.log(`[${new Date().toISOString()}] Refresh GTFS-RT...`);
   try {
     const [tf, af] = await Promise.all([fetchGtfsRt(GTFS_RT_TRIPS), fetchGtfsRt(GTFS_RT_ALERTS)]);
     rtCache.trains    = parseTripUpdates(tf);
     rtCache.alerts    = parseAlerts(af);
     rtCache.updatedAt = Date.now();
-    console.log(`✅ RT: ${rtCache.trains.length} trains aujourd'hui, ${rtCache.alerts.length} alertes`);
+    rtCache.lastError = null;
+    console.log(`✅ RT: ${rtCache.trains.length} trains aujourd'hui, ${rtCache.alerts.length} alertes, ${stopMiss} arrêts sans nom`);
   } catch (err) {
+    rtCache.lastError = err.message;
     console.error('❌ Erreur RT:', err.message);
   }
 }
 
+function refreshRt() {
+  if (!refreshInFlight) refreshInFlight = doRefresh().finally(() => { refreshInFlight = null; });
+  return refreshInFlight;
+}
+
+const isReady = () => !!(ref.loadedAt && rtCache.trains);
+
+// Données prêtes → on répond tout de suite (même si un peu périmées, le timer rafraîchit
+// en arrière-plan). Pas prêt → erreur « warming » (503) au lieu de laisser la requête
+// pendre pendant le chargement : le client réessaie dans quelques secondes.
 async function getCache() {
-  if (!rtCache.trains || Date.now() - rtCache.updatedAt > RT_TTL) {
-    // Une seule requête de refresh à la fois — les autres attendent la même promesse
-    if (!refreshInFlight) {
-      refreshInFlight = refreshRt().finally(() => { refreshInFlight = null; });
-    }
-    await refreshInFlight;
+  if (!isReady()) {
+    if (ref.loadedAt) await refreshRt();      // statique OK, première RT manquante
+    if (!isReady()) { const e = new Error('Serveur en cours de démarrage'); e.warming = true; throw e; }
+  } else if (Date.now() - rtCache.updatedAt > RT_TTL * 2) {
+    refreshRt();                              // données trop vieilles : refresh en arrière-plan
   }
   return rtCache;
+}
+
+function fail(res, err) {
+  res.set('Cache-Control', 'no-store');
+  if (err.warming) {
+    res.set('Retry-After', '5');
+    return res.status(503).json({ warming: true, error: err.message, retryAfter: 5 });
+  }
+  res.status(500).json({ error: err.message });
 }
 
 // ══════════════════════════════════════════════
@@ -362,7 +402,9 @@ function cacheHeaders(req, res, next) {
 app.use(['/trains', '/alerts', '/summary', '/search'], cacheHeaders);
 
 app.get('/health', (req, res) => res.json({
-  status:     'ok',
+  status:     isReady() ? 'ok' : 'warming',
+  ready:      isReady(),
+  lastError:  rtCache.lastError,
   uptime:     Math.round(process.uptime()) + 's',
   gtfsStops:  ref.stops.size,
   gtfsTrips:  ref.trips.size,
@@ -382,7 +424,7 @@ app.get('/trains', async (req, res) => {
     if (minDelay) trains = trains.filter(t => t.delay >= parseInt(minDelay));
     if (limit)    trains = trains.slice(0, parseInt(limit));
     res.json({ updatedAt: new Date(data.updatedAt).toISOString(), cacheAgeSec: Math.round((Date.now()-data.updatedAt)/1000), today: todayStr(), count: trains.length, trains });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 app.get('/trains/:id', async (req, res) => {
@@ -391,14 +433,14 @@ app.get('/trains/:id', async (req, res) => {
     const train = data.trains.find(t => t.id === req.params.id || t.tripId === req.params.id || t.num === req.params.id);
     if (!train) return res.status(404).json({ error: 'Train non trouvé' });
     res.json(train);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 app.get('/alerts', async (req, res) => {
   try {
     const data = await getCache();
     res.json({ updatedAt: new Date(data.updatedAt).toISOString(), count: data.alerts.length, alerts: data.alerts });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 app.get('/summary', async (req, res) => {
@@ -420,7 +462,7 @@ app.get('/summary', async (req, res) => {
       },
       alerts: data.alerts.slice(0, 10),
     });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 app.get('/search', async (req, res) => {
@@ -435,16 +477,30 @@ app.get('/search', async (req, res) => {
       (`${t.type} ${t.num}`).toLowerCase().includes(q)
     ).slice(0, 20);
     res.json({ query: q, count: results.length, results });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 // ══════════════════════════════════════════════
 // BOOT
 // ══════════════════════════════════════════════
-app.listen(PORT, async () => {
-  console.log(`🚄 SNCF Proxy v2 — port ${PORT}`);
-  await loadGtfsStatic();
+process.on('unhandledRejection', err => console.error('⚠️ unhandledRejection:', err && err.message || err));
+process.on('uncaughtException',  err => console.error('⚠️ uncaughtException:',  err && err.message || err));
+
+async function bootData() {
+  // Réessaie le chargement statique tant qu'il échoue (avant : un échec = plus aucune
+  // donnée exploitable pendant 24 h, jusqu'au prochain redémarrage)
+  let wait = 15000;
+  while (!(await loadGtfsStatic())) {
+    console.log(`↻ Nouvel essai GTFS statique dans ${wait / 1000}s`);
+    await sleep(wait);
+    wait = Math.min(wait * 2, 5 * 60 * 1000);
+  }
   await refreshRt();
   setInterval(refreshRt, RT_TTL);
   setInterval(loadGtfsStatic, STATIC_TTL);
+}
+
+app.listen(PORT, () => {
+  console.log(`🚄 SNCF Proxy v2 — port ${PORT}`);
+  bootData();
 });

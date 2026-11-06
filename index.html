@@ -48,8 +48,10 @@ document.currentScript.after(mlink);
   --green:#00E676; --orange:#FF9800; --blue:#2196F3; --grey:#555;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
-  --tab-h: 56px;
-  --tab-bar-space: calc(var(--tab-h) + var(--safe-bottom) + var(--panel-gap));
+  --nav-h: 64px;
+  --nav-bottom: calc(var(--safe-bottom) * .5 + 12px);   /* nav flottante : décollée du bord, au-dessus de la barre home */
+  --hdr-h: calc(var(--safe-top) + 46px);
+  --tab-bar-space: calc(var(--nav-bottom) + var(--nav-h) + 10px);
   --glass-bg: rgba(12, 12, 20, 0.70);
   --glass-blur: 22px;   /* desktop */
   --glass-blur-mob: 14px; /* mobile — plus léger pour le GPU */
@@ -328,6 +330,15 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
   color: var(--text) !important;
 }
 
+/* ── BOUTON ACTUALISER (header) ── */
+.refresh-btn{display:flex;align-items:center;justify-content:center;width:34px;height:34px;flex-shrink:0;border-radius:50%;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:var(--muted);cursor:pointer;transition:color .15s,background .15s;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
+.refresh-btn:hover{color:var(--text);background:rgba(255,255,255,0.13);}
+.refresh-btn svg{width:16px;height:16px;}
+.refresh-btn.spinning svg{animation:spin .8s linear infinite;}
+.leaflet-control-attribution{background:rgba(10,10,18,0.6) !important;color:var(--muted) !important;font-size:9px !important;border-radius:8px 0 0 0;}
+.leaflet-control-attribution a{color:var(--muted) !important;}
+.retry-btn{margin-top:8px;padding:6px 14px;border-radius:20px;border:1px solid rgba(227,6,19,.4);background:rgba(227,6,19,.12);color:#FF8A80;font:600 12px 'DM Sans',sans-serif;cursor:pointer;}
+.more-btn{display:block;width:calc(100% - 28px);margin:10px 14px;padding:10px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--muted);font:600 12px 'DM Sans',sans-serif;cursor:pointer;}
 /* ── LEAFLET OVERRIDES ── */
 .leaflet-popup-content-wrapper{background:rgba(12,12,20,0.92);backdrop-filter:blur(16px);color:var(--text);border:1px solid var(--glass-border);border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.7);}
 .leaflet-popup-tip{background:rgba(12,12,20,0.92);}
@@ -373,11 +384,11 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 
   /* Header mobile — compact */
   header {
-    height: 52px;
-    padding: 0 14px;
-    padding-top: var(--safe-top);
+    height: var(--hdr-h);
+    padding: var(--safe-top) 14px 0;
     gap: 10px;
   }
+  .refresh-btn { margin-left: auto; }
   .logo-title { display: none; }
   .logo-badge { font-size: 14px; padding: 2px 8px; }
   .search-wrap { max-width: none; }
@@ -389,18 +400,22 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
   .app-body { position: relative; }
   .sidebar { display: none; }
 
-  /* Carte — espace pour la tab bar flottante */
+  /* Carte plein écran : elle passe derrière la nav flottante (plus de bandeau noir en bas) */
   #map-container {
     position: absolute;
     inset: 0;
-    bottom: var(--tab-bar-space);
   }
+  /* Contrôles Leaflet (zoom + attribution) au-dessus de la nav */
+  #map-container .leaflet-bottom { bottom: var(--tab-bar-space); } /* #map-container : bat la spécificité de leaflet.css, chargé après */
 
   /* Status bar — juste au-dessus de la tab bar */
   .status-bar {
-    bottom: calc(var(--tab-bar-space) + 8px);
+    bottom: calc(var(--tab-bar-space) + 26px); /* au-dessus de l'attribution Leaflet */
     font-size: 10px;
     padding: 4px 10px;
+    max-width: calc(100% - 2 * var(--panel-gap));
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .legend {
@@ -410,27 +425,38 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
     font-size: 10px;
   }
 
-  /* ── TAB BAR flottante — ancrée au bord, la zone home indicator est
-     couverte par le fond du panneau (padding interne) plutôt que de
-     laisser un bandeau noir vide en dessous ── */
+  /* ── TAB BAR flottante — pilule détachée du bord, indicateur actif qui glisse ── */
   .tab-bar {
     display: flex !important;
     position: fixed;
-    bottom: 0;
-    left: var(--panel-gap);
-    right: var(--panel-gap);
-    height: calc(var(--tab-h) + var(--safe-bottom));
-    background: var(--glass-bg);
-    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+    left: calc(var(--panel-gap) + 6px);
+    right: calc(var(--panel-gap) + 6px);
+    margin-inline: auto;
+    max-width: 380px;
+    bottom: var(--nav-bottom);
+    height: var(--nav-h);
+    padding: 6px;
+    border-radius: calc(var(--nav-h) / 2);
+    background: rgba(18,18,28,0.72);
+    backdrop-filter: blur(24px) saturate(1.6);
+    -webkit-backdrop-filter: blur(24px) saturate(1.6);
     border: 1px solid var(--glass-border);
-    border-bottom: none;
-    border-radius: var(--panel-radius) var(--panel-radius) 0 0;
-    box-shadow: var(--glass-shadow);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.07) inset;
     z-index: 1100;
-    padding: 4px 4px calc(4px + var(--safe-bottom));
-    gap: 4px;
-    will-change: transform;
+    isolation: isolate;
+  }
+  /* Pastille active : glisse d'un onglet à l'autre (--i = index de l'onglet, posé en JS) */
+  .tab-bar::before {
+    content: '';
+    position: absolute;
+    top: 6px; bottom: 6px; left: 6px;
+    width: calc((100% - 12px) / 3);
+    border-radius: calc(var(--nav-h) / 2 - 6px);
+    background: rgba(227,6,19,0.14);
+    border: 1px solid rgba(227,6,19,0.30);
+    transform: translateX(calc(var(--i, 0) * 100%));
+    transition: transform .38s cubic-bezier(.34,1.45,.5,1);
+    z-index: -1;
   }
   .tab-item {
     flex: 1;
@@ -438,45 +464,50 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 3px;
+    gap: 4px;
     cursor: pointer;
-    transition: all .18s;
     color: var(--muted);
     font-size: 10px;
     font-weight: 600;
-    letter-spacing: .4px;
+    letter-spacing: .5px;
+    line-height: 1;
     text-transform: uppercase;
     -webkit-tap-highlight-color: transparent;
-    border-radius: 10px;
-    padding: 6px 4px;
+    transition: color .2s;
     position: relative;
   }
-  .tab-item.active {
-    color: var(--red);
-    background: rgba(227,6,19,0.10);
+  .tab-item.active { color: var(--red); }
+  .tab-ico {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 24px; height: 24px;
+    transition: transform .2s;
   }
-  .tab-item svg { width: 20px; height: 20px; stroke-width: 1.8; }
-  .tab-item.active svg { stroke: var(--red); }
+  .tab-item:active .tab-ico { transform: scale(.86); }
+  .tab-item svg { width: 22px; height: 22px; stroke-width: 1.8; }
   .tab-notif {
     position: absolute;
-    top: 4px;
-    right: 4px;
+    top: -6px;
+    left: 13px;
     background: var(--red);
     color: #fff;
     font-size: 9px;
     font-weight: 700;
     border-radius: 8px;
     padding: 1px 5px;
-    min-width: 18px;
+    min-width: 17px;
     text-align: center;
-    line-height: 14px;
+    line-height: 13px;
+    letter-spacing: 0;
+    box-shadow: 0 0 0 2px rgba(18,18,28,0.9);
   }
 
   /* ── TAB PANELS ── */
   .mobile-panel {
     display: none;
     position: fixed;
-    top: calc(52px + var(--safe-top) + var(--panel-gap));
+    top: calc(var(--hdr-h) + var(--panel-gap));
     left: var(--panel-gap);
     right: var(--panel-gap);
     bottom: var(--tab-bar-space);
@@ -497,7 +528,7 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
     position: fixed;
     left: var(--panel-gap);
     right: var(--panel-gap);
-    top: calc(52px + var(--safe-top) + var(--panel-gap));
+    top: calc(var(--hdr-h) + var(--panel-gap));
     bottom: var(--tab-bar-space);
     width: auto;
     height: auto;
@@ -640,6 +671,9 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
     <div class="hstat" id="hstatLateWrap" style="display:none"><div class="hstat-dot" style="background:var(--orange)"></div><span id="hstatLate">—</span> retard(s)</div>
     <div class="hstat" id="hstatCancelWrap" style="display:none"><div class="hstat-dot" style="background:var(--red)"></div><span id="hstatCancel">—</span> supprimé(s)</div>
   </div>
+  <button class="refresh-btn" id="refreshBtn" onclick="loadTrains(true)" title="Actualiser" aria-label="Actualiser">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+  </button>
 </header>
 
 <div class="app-body">
@@ -734,18 +768,18 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 <!-- TAB BAR mobile -->
 <nav class="tab-bar" id="tabBar">
   <div class="tab-item active" id="tab-map" onclick="switchTab('map')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+    <span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg></span>
     Carte
   </div>
   <div class="tab-item" id="tab-list" onclick="switchTab('list')">
-    <div style="position:relative;display:inline-block">
+    <span class="tab-ico">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
       <span class="tab-notif" id="tabNotif" style="display:none"></span>
-    </div>
+    </span>
     Trains
   </div>
   <div class="tab-item" id="tab-search" onclick="switchTab('search')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></span>
     Recherche
   </div>
 </nav>
@@ -773,6 +807,26 @@ header{display:flex;align-items:center;gap:16px;padding:0 20px;height:56px;backg
 <script>
 const PROXY = 'https://sncf-poxy-live.onrender.com';
 const REFRESH_MS = 60000;
+
+// ── FOND DE CARTE ─────────────────────────────────────
+// Depuis fin août 2026, CARTO exige une clé API sur ses tuiles raster (sans clé : filigrane
+// « API KEY REQUIRED » sur chaque tuile). Clé gratuite, envoyée par mail, sans compte :
+// https://carto.com/basemaps/apikey/  → colle-la ci-dessous (garde la casse exacte).
+// Tant que CARTO_KEY est vide, on utilise un fond sombre Esri qui ne demande aucune clé.
+// Dans le dashboard CARTO, restreins la clé au domaine qui héberge l'app (clé visible côté client).
+const CARTO_KEY = '';
+const TILE_SETS = CARTO_KEY ? {
+  base:   { url: `https://{s}.basemaps.cartocdn.com/rastertiles/dark_nolabels/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`,
+            opts: { maxZoom: 19, subdomains: 'abcd',
+                    attribution: '&copy; <a href="https://carto.com">CARTO</a> &copy; <a href="https://www.openstreetmap.org">OSM</a>' } },
+  labels: { url: `https://{s}.basemaps.cartocdn.com/rastertiles/dark_only_labels/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`,
+            opts: { maxZoom: 19, subdomains: 'abcd' } },
+} : {
+  base:   { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+            opts: { maxZoom: 18, maxNativeZoom: 16, attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ' } },
+  labels: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+            opts: { maxZoom: 18, maxNativeZoom: 16 } },
+};
 
 let map, allTrains = [], allAlerts = [], markers = {}, routeLayers = [], selId = null, activeFilter = 'all';
 let searchTimer = null, mobSearchTimer = null;
@@ -814,13 +868,18 @@ function updateDetPinBtn() {
 // isMobile en valeur booléenne — évite window.innerWidth à chaque appel
 let isMobileVal = window.innerWidth <= 768;
 const isMobile = () => isMobileVal;
-window.addEventListener('resize', () => { isMobileVal = window.innerWidth <= 768; }, { passive: true });
+window.addEventListener('resize', () => {
+  const was = isMobileVal;
+  isMobileVal = window.innerWidth <= 768;
+  if (was !== isMobileVal && allTrains.length) render(); // la liste vit dans un autre conteneur
+}, { passive: true });
 
 // ══════════════════════════════════════════════════════
 // TAB BAR — navigation mobile
 // ══════════════════════════════════════════════════════
 function switchTab(tab) {
   activeTab = tab;
+  document.getElementById('tabBar').style.setProperty('--i', ['map','list','search'].indexOf(tab));
   document.querySelectorAll('.tab-item').forEach(el =>
     el.classList.toggle('active', el.id === 'tab-' + tab)
   );
@@ -833,6 +892,7 @@ function switchTab(tab) {
   }
   // Ferme le détail si on change d'onglet
   if (tab !== 'map') closeDetail();
+  if (tab === 'list' && listDirty) render();
 }
 
 // ══════════════════════════════════════════════════════
@@ -900,13 +960,8 @@ function initMap() {
   // Décale le zoom control sur desktop pour éviter la collision avec le panneau détail
   const zoomEl = document.querySelector('.leaflet-control-zoom');
   if (zoomEl) zoomEl.style.marginRight = isMobile() ? '8px' : '355px';
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
-    maxZoom:19, subdomains:'abcd',
-    attribution:'&copy; <a href="https://carto.com">CARTO</a> &copy; <a href="https://www.openstreetmap.org">OSM</a>'
-  }).addTo(map);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
-    maxZoom:19, subdomains:'abcd'
-  }).addTo(map);
+  L.tileLayer(TILE_SETS.base.url,   TILE_SETS.base.opts).addTo(map);
+  L.tileLayer(TILE_SETS.labels.url, TILE_SETS.labels.opts).addTo(map);
   map.on('click', closeDetail);
   initDeck();
 }
@@ -1002,32 +1057,76 @@ function clearRoutes() {
 // ══════════════════════════════════════════════════════
 // CHARGEMENT DONNÉES
 // ══════════════════════════════════════════════════════
-async function loadTrains() {
-  setStatus('<span style="display:inline-block;width:9px;height:9px;border:2px solid #333;border-top-color:var(--red);border-radius:50%;animation:spin .7s linear infinite;margin-right:5px;vertical-align:middle"></span>Actualisation…');
+// Chargement : un seul fetch à la fois, nouvelle tentative rapide si le serveur dort /
+// démarre (Render gratuit : 30–60 s de réveil + chargement du référentiel), puis cadence
+// normale de 60 s. Avant, un échec attendait 60 s et la requête était coupée à 25 s,
+// donc un serveur lent à se réveiller ne répondait jamais à temps → app « bloquée ».
+let loading = false, failCount = 0, lastOk = 0, loadTimer = null;
+function scheduleLoad(ms) {
+  clearTimeout(loadTimer);
+  if (document.hidden) return; // PWA en arrière-plan : on reprendra à la réouverture
+  loadTimer = setTimeout(() => loadTrains(), ms);
+}
+function spinRefresh(on) {
+  document.getElementById('refreshBtn')?.classList.toggle('spinning', on);
+}
+async function loadTrains(manual) {
+  if (loading) return;
+  loading = true;
+  clearTimeout(loadTimer);
+  spinRefresh(true);
+  const spinner = '<span style="display:inline-block;width:9px;height:9px;border:2px solid #333;border-top-color:var(--red);border-radius:50%;animation:spin .7s linear infinite;margin-right:5px;vertical-align:middle"></span>';
+  setStatus(spinner + (failCount ? 'Réveil du serveur…' : 'Actualisation…'));
+  let next = REFRESH_MS;
   try {
-    const [r, alertsSettled] = await Promise.all([
-      fetch(`${PROXY}/trains`, { signal: AbortSignal.timeout(25000) }),
-      fetch(`${PROXY}/alerts`, { signal: AbortSignal.timeout(10000) }).then(ra => ra.json()).catch(() => ({ alerts: [] })),
-    ]);
+    // Délai large tant qu'on n'a jamais reçu de données (réveil à froid), court ensuite
+    const ctl = new AbortController();
+    const killer = setTimeout(() => ctl.abort(), (!lastOk || failCount) ? 70000 : 25000);
+    let r, alertsSettled;
+    try {
+      [r, alertsSettled] = await Promise.all([
+        fetch(`${PROXY}/trains`, { signal: ctl.signal }),
+        fetch(`${PROXY}/alerts`, { signal: ctl.signal }).then(ra => ra.ok ? ra.json() : { alerts: [] }).catch(() => ({ alerts: [] })),
+      ]);
+    } finally { clearTimeout(killer); }
+    if (r.status === 503) { const w = new Error('warming'); w.warming = true; throw w; }
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     allTrains = data.trains || [];
+    trainsVersion++;
     invalidatePosCache(); // positions recalculées avec les nouvelles données
     allAlerts = alertsSettled.alerts || [];
     render();
+    failCount = 0; lastOk = Date.now();
     const age = data.cacheAgeSec != null ? ` · données ${data.cacheAgeSec}s` : '';
-    setStatus(`${allTrains.length} trains · ${allTrains.filter(t=>t.rtStatus!=='NO_DISRUPTION').length} perturbés${age} · màj ${hhmm()}`);
-
+    const late = allTrains.filter(t=>t.rtStatus!=='NO_DISRUPTION').length;
+    setStatus(isMobileVal
+      ? `${allTrains.length} trains · ${late} perturbés · ${hhmm()}`
+      : `${allTrains.length} trains · ${late} perturbés${age} · màj ${hhmm()}`);
   } catch(e) {
     console.error(e);
-    setStatus('⚠ Erreur de connexion');
+    failCount++;
+    next = e.warming ? 4000 : Math.min(5000 * 2 ** (failCount - 1), 30000);
+    setStatus(e.warming ? '⏳ Serveur en démarrage… nouvelle tentative' : '⚠ Serveur injoignable — nouvelle tentative…');
     if (!allTrains.length) {
-      const errHTML = `<div class="err-box"><strong>Serveur injoignable</strong>En plan gratuit Render peut prendre <strong>30–60 s</strong> à se réveiller.<br><a href="${PROXY}/health" target="_blank" style="color:var(--red)">→ Tester /health</a></div>`;
-      document.getElementById('trainsList').innerHTML = errHTML;
-      document.getElementById('trainsListMob').innerHTML = errHTML;
+      const errHTML = `<div class="err-box"><strong>${e.warming ? 'Serveur en démarrage' : 'Serveur injoignable'}</strong>En plan gratuit Render peut prendre <strong>30–60 s</strong> à se réveiller. Nouvelle tentative automatique…<br><button class="retry-btn" onclick="loadTrains(true)">Réessayer maintenant</button></div>`;
+      document.getElementById(isMobileVal ? 'trainsListMob' : 'trainsList').innerHTML = errHTML;
     }
+  } finally {
+    loading = false;
+    spinRefresh(false);
+    scheduleLoad(next);
   }
 }
+
+// Retour au premier plan : si les données ont plus de 45 s on actualise, et on redessine deck.gl
+// (le canvas WebGL peut rester figé après un passage en arrière-plan sur iOS)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { clearTimeout(loadTimer); return; }
+  try { map && map.invalidateSize(); deckOverlay && deckOverlay.redraw(true); } catch {}
+  if (!loading && Date.now() - lastOk > 45000) loadTrains();
+  else if (!loading) scheduleLoad(REFRESH_MS - Math.min(REFRESH_MS - 1000, Date.now() - lastOk));
+});
 
 // ══════════════════════════════════════════════════════
 // RENDU
@@ -1043,11 +1142,17 @@ function isInFrance(t) {
   if (!stops.length) return true;
   return inBox(stops[0].lat, stops[0].lon) && inBox(stops[stops.length-1].lat, stops[stops.length-1].lon);
 }
+// Résultat mémoïsé : filtered() est appelé à chaque zoom / sélection / fermeture de détail,
+// et refaire 2 300 trains × isInFrance à chaque fois coûtait cher sur mobile
+let trainsVersion = 0, _fc = { v: -1, f: null, list: [] };
 function filtered() {
+  if (_fc.v === trainsVersion && _fc.f === activeFilter) return _fc.list;
   const running = allTrains.filter(t => isStillRunning(t) && isInFrance(t));
-  if (activeFilter === 'late') return running.filter(t => t.delay > 0 || t.rtStatus === 'NO_SERVICE' || t.rtStatus === 'MODIFIED_SERVICE');
-  if (activeFilter !== 'all')  return running.filter(t => t.type === activeFilter);
-  return running;
+  let list = running;
+  if (activeFilter === 'late') list = running.filter(t => t.delay > 0 || t.rtStatus === 'NO_SERVICE' || t.rtStatus === 'MODIFIED_SERVICE');
+  else if (activeFilter !== 'all') list = running.filter(t => t.type === activeFilter);
+  _fc = { v: trainsVersion, f: activeFilter, list };
+  return list;
 }
 
 function render() {
@@ -1096,14 +1201,13 @@ function render() {
   const nb = allTrains.filter(t => t.rtStatus !== 'NO_DISRUPTION').length;
   const notif = document.getElementById('tabNotif');
   if (notif) {
-    if (nb > 0) { notif.textContent = nb; notif.style.display = 'block'; }
+    if (nb > 0) { notif.textContent = nb > 99 ? '99+' : nb; notif.style.display = 'block'; }
     else notif.style.display = 'none';
   }
 
   if (!list.length) {
     const empty = `<div class="empty">Aucun train pour ce filtre.</div>`;
-    document.getElementById('trainsList').innerHTML    = empty;
-    document.getElementById('trainsListMob').innerHTML = empty;
+    document.getElementById(isMobileVal ? 'trainsListMob' : 'trainsList').innerHTML = empty;
     clearMarkers(); return;
   }
   renderPinnedSection();
@@ -1169,8 +1273,11 @@ function fmtISO(iso) {
   } catch { return '—'; }
 }
 
-function renderCards(list, now) {
+function renderCards(fullList, now) {
   now = now || Date.now();
+  // Mobile : on ne rend la liste que si l'onglet Trains est ouvert (marqué « sale » sinon)
+  if (isMobileVal && activeTab !== 'list') { listDirty = true; return; }
+  const list = fullList.slice(0, listLimit);
   const html = list.map(t => {
     const { cls, delayLabel, delayColor } = statusInfo(t);
     const tc  = `tag-${t.type.toLowerCase()}`;
@@ -1204,11 +1311,23 @@ function renderCards(list, now) {
     </div>`;
   }).join('');
 
-  // Sur mobile : ne rendre que la liste visible (mobListPanel)
-  // Sur desktop : ne rendre que la sidebar
-  // Les deux listes sont maintenant le même élément CSS selon le viewport
-  document.getElementById('trainsList').innerHTML    = html;
-  document.getElementById('trainsListMob').innerHTML = html;
+  setListHTML(html, fullList.length);
+}
+
+// Une seule liste est rendue (celle du viewport courant), plafonnée à LIST_STEP cartes
+// avec « Afficher plus » : avant, 2 × 2 300 cartes étaient reconstruites chaque minute
+// (≈ 50 000 nœuds DOM) → c'était l'une des causes des freezes sur mobile.
+const LIST_STEP = 120;
+let listLimit = LIST_STEP, listDirty = false;
+function setListHTML(html, total) {
+  const el = document.getElementById(isMobileVal ? 'trainsListMob' : 'trainsList');
+  const other = document.getElementById(isMobileVal ? 'trainsList' : 'trainsListMob');
+  other.innerHTML = '';
+  const prev = el.scrollTop;
+  el.innerHTML = html + (total > listLimit
+    ? `<button class="more-btn" onclick="listLimit += LIST_STEP; render()">Afficher plus (${total - listLimit} restants)</button>` : '');
+  el.scrollTop = prev; // la liste ne remonte plus en haut à chaque actualisation
+  listDirty = false;
 }
 
 function renderMarkers(list) {
@@ -1532,6 +1651,7 @@ function pickResult(id) {
 // ══════════════════════════════════════════════════════
 function setFilter(f) {
   activeFilter = f;
+  listLimit = LIST_STEP;
   document.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c.dataset.f === f));
   render();
 }
@@ -1768,16 +1888,31 @@ function initDeck() {
     syncDeck();
   }
 
-  map.on('move',   syncDeck);
-  map.on('zoom',   syncDeck);
+  // Un seul syncDeck par frame (move + zoom se déclenchent en rafale pendant un pinch)
+  let syncQueued = false;
+  function queueSync() {
+    if (syncQueued) return;
+    syncQueued = true;
+    requestAnimationFrame(() => { syncQueued = false; syncDeck(); });
+  }
+  map.on('move',   queueSync);
+  map.on('zoom',   queueSync);
   map.on('resize', resizeDeck);
+  // Taille des icônes / étiquettes dépendent du zoom → re-rendu quand le zoom est terminé
+  map.on('zoomend', () => renderDeckMarkers(filtered()));
+  // iOS peut perdre le contexte WebGL quand la PWA passe en arrière-plan → redessin au retour
+  canvas.addEventListener('webglcontextlost', e => e.preventDefault());
   resizeDeck(); // init
 }
 
 function renderDeckMarkers(list) {
   if (!deckOverlay) return;
 
-  const ICON_SIZE = isMobile() ? 34 : 46;
+  // Icônes plus petites en vue France entière (sinon 2000+ trains se chevauchent),
+  // taille normale à partir du zoom 8 ; étiquettes TGV/TER/IC seulement quand il y a la place
+  const zoom = map ? map.getZoom() : 6;
+  const ICON_SIZE = (isMobile() ? 34 : 46) * Math.min(1, Math.max(0.4, 0.4 + (zoom - 5) * 0.15));
+  const showLabels = zoom >= 8;
   const data = list
     .filter(t => t.rtStatus !== 'NO_SERVICE')
     .map(t => {
@@ -1817,7 +1952,7 @@ function renderDeckMarkers(list) {
     sizeUnits:   'pixels',
     pickable:    true,
     onClick:     info => { if (info.object) selectTrain(info.object.train.id); },
-    updateTriggers: { getSize: [selId, [...pinnedTrains].join(',')] }
+    updateTriggers: { getSize: [selId, [...pinnedTrains].join(','), Math.round(ICON_SIZE)] }
   });
 
   const textLayer = new deck.TextLayer({
@@ -1836,7 +1971,7 @@ function renderDeckMarkers(list) {
     getPixelOffset: [0, 1], // léger centrage vertical
   });
 
-  deckOverlay.setProps({ layers: [pinHaloLayer, iconLayer, textLayer] });
+  deckOverlay.setProps({ layers: showLabels ? [pinHaloLayer, iconLayer, textLayer] : [pinHaloLayer, iconLayer] });
 }
 
 function clearDeckMarkers() {
@@ -1850,7 +1985,6 @@ function clearDeckMarkers() {
 function boot() {
   initMap();
   loadTrains();
-  setInterval(loadTrains, REFRESH_MS);
 }
 </script>
 </body>
