@@ -1692,9 +1692,13 @@ function toggleAlerts(uid) {
 // résolution (×3) pour rester net à n'importe quel niveau de zoom/écran retina.
 // Même code couleur qu'avant (vert/orange/rouge/bleu) et une silhouette par
 // type de train, pour rester lisible au premier coup d'œil sur la carte :
-//   TGV → profil effilé (nez pointu, à l'image du nez aérodynamique)
-//   IC  → profil à coins chanfreinés (intermédiaire)
-//   TER → profil arrondi, plus trapu (rame régionale)
+//   Toutes les silhouettes sont des « flèches » : nez pointu à l'avant, arrière plat et
+//   un repère blanc ▲ côté nez, pour que le SENS DE MARCHE se lise au premier coup d'œil
+//   (avant, les TER étaient des pilules symétriques sans avant ni arrière).
+//   Le type se lit à la proportion :
+//   TGV → long et fin, nez en ogive
+//   IC  → proportions moyennes, nez en V
+//   TER → court et large, arrière bien arrondi
 // Colonnes : 0=vert 1=orange 2=rouge 3=bleu — Lignes : 0=TGV 1=IC 2=TER
 const COLS = 4, ROWS = 3;
 const RES = 3;          // sur-échantillonnage retina
@@ -1702,43 +1706,33 @@ const CELL = 56 * RES;  // taille de cellule réelle dans l'atlas (px)
 
 const TRAIN_COLORS = ['#00E676', '#FF9800', '#E30613', '#2196F3']; // vert orange rouge bleu
 
+// wf/hf = largeur/hauteur relatives, nose = part de la hauteur occupée par le nez,
+// ogive = bords du nez bombés (TGV), rear = rayon des coins arrière
+const SHAPES = [
+  { wf: 0.74, hf: 1.00, nose: 0.40, ogive: true,  rear: 0.10 }, // TGV
+  { wf: 0.88, hf: 0.94, nose: 0.32, ogive: false, rear: 0.14 }, // IC
+  { wf: 1.00, hf: 0.84, nose: 0.28, ogive: false, rear: 0.22 }, // TER
+];
+
 function drawTrainShape(ctx, cx, cy, w, h, typeRow) {
-  // Dessine le contour dans l'espace local (nez orienté vers le haut = "avant" du train,
-  // la rotation vers le cap réel est appliquée ensuite par deck.gl via getAngle)
-  const halfW = w / 2, top = cy - h / 2, bottom = cy + h / 2;
+  // Contour dans l'espace local : nez vers le haut = « avant » du train ;
+  // la rotation vers le cap réel est appliquée ensuite par deck.gl via getAngle.
+  const S = SHAPES[typeRow];
+  const hw = w * S.wf / 2, hh = h * S.hf;
+  const top = cy - hh / 2, bottom = cy + hh / 2;
+  const noseY = top + hh * S.nose, rr = w * S.rear;
   ctx.beginPath();
-  if (typeRow === 0) {
-    // TGV — nez pointu aérodynamique
-    const noseH = h * 0.30, r = w * 0.42;
-    ctx.moveTo(cx, top);
-    ctx.lineTo(cx + halfW, top + noseH);
-    ctx.lineTo(cx + halfW, bottom - r);
-    ctx.arcTo(cx + halfW, bottom, cx, bottom, r);
-    ctx.arcTo(cx - halfW, bottom, cx - halfW, bottom - r, r);
-    ctx.lineTo(cx - halfW, top + noseH);
-    ctx.closePath();
-  } else if (typeRow === 1) {
-    // IC — coins avant chanfreinés, arrière arrondi
-    const chamfer = h * 0.16, r = w * 0.30;
-    ctx.moveTo(cx - halfW + chamfer, top);
-    ctx.lineTo(cx + halfW - chamfer, top);
-    ctx.lineTo(cx + halfW, top + chamfer);
-    ctx.lineTo(cx + halfW, bottom - r);
-    ctx.arcTo(cx + halfW, bottom, cx, bottom, r);
-    ctx.arcTo(cx - halfW, bottom, cx - halfW, bottom - r, r);
-    ctx.lineTo(cx - halfW, top + chamfer);
-    ctx.closePath();
-  } else {
-    // TER — rame régionale, silhouette "stadium" trapue et arrondie
-    const r = w * 0.48;
-    ctx.moveTo(cx - halfW, top + r);
-    ctx.arcTo(cx - halfW, top, cx, top, r);
-    ctx.arcTo(cx + halfW, top, cx + halfW, top + r, r);
-    ctx.lineTo(cx + halfW, bottom - r);
-    ctx.arcTo(cx + halfW, bottom, cx, bottom, r);
-    ctx.arcTo(cx - halfW, bottom, cx - halfW, bottom - r, r);
-    ctx.closePath();
-  }
+  ctx.moveTo(cx, top);
+  if (S.ogive) ctx.quadraticCurveTo(cx + hw * 0.72, top + (noseY - top) * 0.08, cx + hw, noseY);
+  else         ctx.lineTo(cx + hw, noseY);
+  ctx.lineTo(cx + hw, bottom - rr);
+  ctx.arcTo(cx + hw, bottom, cx, bottom, rr);
+  ctx.arcTo(cx - hw, bottom, cx - hw, bottom - rr, rr);
+  ctx.lineTo(cx - hw, noseY);
+  if (S.ogive) ctx.quadraticCurveTo(cx - hw * 0.72, top + (noseY - top) * 0.08, cx, top);
+  else         ctx.lineTo(cx, top);
+  ctx.closePath();
+  return { top, hh, hw };
 }
 
 function buildTrainAtlas() {
@@ -1746,6 +1740,8 @@ function buildTrainAtlas() {
   atlasCanvas.width  = CELL * COLS;
   atlasCanvas.height = CELL * ROWS;
   const ctx = atlasCanvas.getContext('2d');
+  ctx.lineJoin = 'round';
+  ctx.lineCap  = 'round';
 
   const w = CELL * 0.62, h = CELL * 0.88;
 
@@ -1755,25 +1751,29 @@ function buildTrainAtlas() {
       const cy = row * CELL + CELL / 2;
       const base = TRAIN_COLORS[col];
 
-      drawTrainShape(ctx, cx, cy, w, h, row);
+      const g = drawTrainShape(ctx, cx, cy, w, h, row);
 
-      // Léger dégradé pour donner du volume, contour sombre pour la lisibilité sur fond de carte
-      const grad = ctx.createLinearGradient(cx, cy - h / 2, cx, cy + h / 2);
-      grad.addColorStop(0, base);
-      grad.addColorStop(1, shadeColor(base, -18));
+      // Dégradé : nez plus clair, arrière plus sombre → renforce aussi la lecture du sens
+      const grad = ctx.createLinearGradient(cx, g.top, cx, g.top + g.hh);
+      grad.addColorStop(0, shadeColor(base, 10));
+      grad.addColorStop(1, shadeColor(base, -24));
       ctx.fillStyle = grad;
       ctx.fill();
       ctx.lineWidth = CELL * 0.045;
       ctx.strokeStyle = 'rgba(10,10,15,0.85)';
       ctx.stroke();
 
-      // Ligne "vitre" centrale — évoque la ligne de toit/pare-brise du train
+      // Repère de direction : triangle blanc ▲ juste derrière le nez
+      const tipY = g.top + g.hh * 0.17, half = g.hw * 0.46;
       ctx.beginPath();
-      ctx.moveTo(cx, cy - h / 2 + h * (row === 0 ? 0.22 : 0.14));
-      ctx.lineTo(cx, cy + h * 0.30);
-      ctx.lineWidth = CELL * 0.05;
-      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-      ctx.lineCap = 'round';
+      ctx.moveTo(cx, tipY);
+      ctx.lineTo(cx + half, tipY + half * 1.15);
+      ctx.lineTo(cx - half, tipY + half * 1.15);
+      ctx.closePath();
+      ctx.fillStyle   = 'rgba(255,255,255,0.92)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+      ctx.lineWidth   = CELL * 0.02;
+      ctx.fill();
       ctx.stroke();
     }
   }
@@ -1909,10 +1909,10 @@ function renderDeckMarkers(list) {
   if (!deckOverlay) return;
 
   // Icônes plus petites en vue France entière (sinon 2000+ trains se chevauchent),
-  // taille normale à partir du zoom 8 ; étiquettes TGV/TER/IC seulement quand il y a la place
+  // taille normale à partir du zoom 8 ; étiquettes TGV/TER/IC à partir du zoom 9 (quand il y a la place)
   const zoom = map ? map.getZoom() : 6;
   const ICON_SIZE = (isMobile() ? 34 : 46) * Math.min(1, Math.max(0.4, 0.4 + (zoom - 5) * 0.15));
-  const showLabels = zoom >= 8;
+  const showLabels = zoom >= 9;
   const data = list
     .filter(t => t.rtStatus !== 'NO_SERVICE')
     .map(t => {
@@ -1955,20 +1955,26 @@ function renderDeckMarkers(list) {
     updateTriggers: { getSize: [selId, [...pinnedTrains].join(','), Math.round(ICON_SIZE)] }
   });
 
+  // Étiquette TGV/IC/TER placée SOUS l'icône (non pivotée), sur une pastille sombre :
+  // au centre elle recouvrait la flèche de direction dès que le train roulait vers l'est/l'ouest
   const textLayer = new deck.TextLayer({
     id: 'trains-labels',
     data,
     getPosition:  d => [d.pos.lon, d.pos.lat],
     getText:      d => d.train.type,
-    getSize:      10,
-    getColor:     [255, 255, 255, 230],
+    getSize:      9,
+    getColor:     [255, 255, 255, 235],
     fontFamily:   'DM Mono, monospace',
     fontWeight:   '700',
     getTextAnchor:'middle',
     getAlignmentBaseline: 'center',
     sizeUnits:    'pixels',
     pickable:     false,
-    getPixelOffset: [0, 1], // léger centrage vertical
+    background:   true,
+    getBackgroundColor: [10, 10, 15, 175],
+    backgroundPadding:  [3, 1],
+    getPixelOffset: [0, ICON_SIZE * 0.55 + 7],
+    updateTriggers: { getPixelOffset: [Math.round(ICON_SIZE)] },
   });
 
   deckOverlay.setProps({ layers: showLabels ? [pinHaloLayer, iconLayer, textLayer] : [pinHaloLayer, iconLayer] });
